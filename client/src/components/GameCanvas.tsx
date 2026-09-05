@@ -1154,7 +1154,7 @@ export default function GameCanvas() {
     <div className="weapon-library-layer" data-testid="weapon-library" onClick={(event) => { if (event.target === event.currentTarget) closeWeaponLibrary(); }}>
       <section className="weapon-library-panel" role="dialog" aria-modal="true" aria-labelledby="weapon-library-title" data-dialog-root="true" onClick={(event) => event.stopPropagation()}>
         <header className="weapon-library-header"><div><p className="modal-eyebrow">装備データベース // 出撃前確認</p><h2 id="weapon-library-title">武器一覧</h2></div><button ref={weaponLibraryCloseRef} type="button" className="weapon-library-close" aria-label="武器一覧を閉じる" onClick={closeWeaponLibrary}>×</button></header>
-        <p className="weapon-library-intro">名前だけでなく、攻撃の向き・範囲・役割まで確認できます。カードを選ぶと、レベルごとの変化と進化条件を表示します。</p>
+        <p className="weapon-library-intro">名前だけでなく、攻撃の向き・範囲・役割まで確認できます。カードを選ぶと、レベルごとの変化、コード上の数値、進化条件を表示します。数値は実戦DPSではなく、現在のシミュレーション設定です。</p>
         <div className="weapon-library-grid">
           {WEAPON_LIBRARY.map((weapon) => <button key={weapon.id} className="weapon-library-card" type="button" onClick={() => setWeaponDetailId(weapon.id)}><ModuleIcon id={weapon.iconId} className="weapon-library-icon" /><span className="weapon-library-category">{weapon.category}</span><strong>{weapon.title}</strong><small>{weapon.role}</small><p>{weapon.description}</p><i>詳細を見る</i></button>)}
         </div>
@@ -1164,6 +1164,7 @@ export default function GameCanvas() {
           <header className="weapon-detail-header"><div><p className="modal-eyebrow">{selectedWeapon.code} // {selectedWeapon.category}</p><h2 id="weapon-detail-title"><ModuleIcon id={selectedWeapon.iconId} className="weapon-detail-icon" />{selectedWeapon.title}</h2></div><button ref={weaponDetailCloseRef} type="button" className="weapon-library-close" aria-label="武器の詳細を閉じる" onClick={() => setWeaponDetailId(null)}>×</button></header>
           <div className="weapon-detail-lead"><strong>{selectedWeapon.role}</strong><p>{selectedWeapon.description}</p></div>
           <section className="weapon-level-section" aria-labelledby="weapon-level-title"><header><h3 id="weapon-level-title">レベルごとの変化</h3><span>{selectedWeapon.maxLevelText}</span></header><ol>{selectedWeapon.levelDetails.map((detail, index) => <li key={`${selectedWeapon.id}-level-${index}`}><b>Lv.{index + 1}</b><span>{detail.replace(/^レベル\d+：/, "")}</span></li>)}</ol></section>
+          <section className="weapon-implementation-section" aria-labelledby="weapon-implementation-title"><header><h3 id="weapon-implementation-title">実装値の目安</h3><span>理論値 // 実戦DPSではない</span></header><p>Tierを t として表示しています。対象数、命中、敵の配置、進化、Dodge強化などで実戦結果は変わります。</p><ul>{selectedWeapon.implementationNotes.map((note, index) => <li key={`${selectedWeapon.id}-implementation-${index}`}>{note}</li>)}</ul></section>
           {selectedWeapon.synergy && <section className="weapon-synergy-section"><h3>組み合わせと進化</h3><p>{selectedWeapon.synergy}</p></section>}
           <p className="weapon-availability">{selectedWeapon.availability}</p>
         </article>
