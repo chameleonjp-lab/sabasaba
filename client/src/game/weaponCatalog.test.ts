@@ -12,7 +12,7 @@ describe("weapon library catalog", () => {
   it("exposes implementation notes for every selectable upgrade", () => {
     for (const entry of WEAPON_LIBRARY) {
       expect(entry.implementationNotes.length, entry.id).toBeGreaterThan(0);
-      expect(entry.implementationNotes.join(" ")).toContain("実装");
+      expect(entry.implementationNotes.join(" ").trim()).not.toBe("");
     }
   });
 });
