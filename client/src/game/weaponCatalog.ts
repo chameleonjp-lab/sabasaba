@@ -11,6 +11,8 @@ export interface WeaponLibraryEntry {
   role: string;
   description: string;
   levelDetails: readonly string[];
+  /** Exact values/formulas copied from the current simulation; these are not measured in-play DPS. */
+  implementationNotes: readonly string[];
   synergy?: string;
   maxLevelText: string;
   availability: string;
@@ -241,6 +243,130 @@ const levelDetails: Record<UpgradeId, readonly string[]> = {
   ],
 };
 
+
+const implementationNotesById: Record<UpgradeId, readonly string[]> = {
+  pulse: [
+    "Tier 1の実装値：1発14ダメージ、発射間隔0.48秒。",
+    "強化1回ごとに1発ダメージ+8。Dodge直後の一時強化とRelayの連射短縮は別効果です。",
+  ],
+  scatter: [
+    "Tier t：3発を同時発射、1発ダメージ10 + 5t、発射間隔max(0.74, 1.62 − 0.12t)秒。",
+    "照準は移動方向。移動していない場合は最寄りの敵へ向きます。",
+  ],
+  orbit: [
+    "Tier 1で周回刃2基。NormalはTier 7で7基まで、EndlessはTier 3まで。",
+    "同じ敵への再命中間隔0.34秒、1回のダメージ10 + 6t。",
+  ],
+  relay: [
+    "通常強化：主砲の発射間隔を1回ごとに0.08秒短縮（下限0.16秒）、移動速度+0.7。",
+    "上限後は熟練機動へ切り替わり、移動速度をさらに強化します。",
+  ],
+  barrier: [
+    "取得ごとに最大耐久+8（上限200）、現在耐久を30回復。Endlessのみ出現。",
+    "上限後は熟練整備へ切り替わり、現在耐久を20回復します。",
+  ],
+  vector: [
+    "Tier t：1発ダメージ28 + 16t、発射間隔max(0.78, 2.45 − 0.36t)秒。",
+    "体力の多い敵を優先。Tier 3では3方向へ発射します。",
+  ],
+  nova: [
+    "Tier t：範囲半径3 + 1.25t、1回のダメージ18 + 13t、発動間隔max(1.2, 3.8 − 0.52t)秒。",
+    "周囲の敵を押し戻します。",
+  ],
+  mirage: [
+    "Tier t：小型機t機、1発ダメージ7 + 5t、発射間隔max(0.44, 1.12 − 0.18t)秒。",
+    "進化後は小型機を砲台へ統合します。",
+  ],
+  pylon: [
+    "Tier t：砲台t基、発射ダメージ9 + 6t、射程12 + 2t、発射間隔max(0.45, 1.12 − 0.16t)秒。",
+    "砲台はプレイヤーへ追従し、近い敵を自動で狙います。",
+  ],
+  reactive: [
+    "Tier t：被ダメージ軽減12t%（上限36%）、被弾時の反撃波は1回12 + 10tダメージ。",
+    "反撃は被弾を無効化せず、別の攻撃として発生します。",
+  ],
+  cryo: [
+    "Tier t：命中した敵の減速時間0.75 + 0.42t秒。",
+    "減速中の敵の移動速度は実装上0.52倍です。",
+  ],
+  ricochet: [
+    "Tier t：1回の発動でt発、1発11 + 7tダメージ、跳弾回数1 + t、発動間隔max(0.56, 1.5 − 0.18t)秒。",
+    "跳弾先は未命中の近い敵を優先します。",
+  ],
+  gravity: [
+    "Tier t：特異点の持続2.3 + 0.45t秒、範囲半径3.3 + 0.9t、脈動1回3 + 3tダメージ。",
+    "脈動間隔は0.42秒。敵を中心へ引き寄せます。",
+  ],
+  decoy: [
+    "Tier t：おとりの発動間隔max(4.2, 8.2 − 0.95t)秒。誘導パルスは1回6 + 5tダメージ。",
+    "おとり消滅時の爆発は30 + 16tダメージです。",
+  ],
+  mortar: [
+    "Tier t：爆発弾1発24 + 15tダメージ、爆発半径2.4 + 0.95t、発動間隔max(2.2, 5.3 − 0.72t)秒。",
+    "着弾までの飛行時間もTierに応じて短くなります。",
+  ],
+  split: [
+    "Tier t：本弾13 + 8tダメージ、分裂数2 + 2t。分裂弾は本弾ダメージの55%（最低6）。",
+    "発動間隔max(0.82, 2.05 − 0.26t)秒。",
+  ],
+  boomerang: [
+    "Tier t：1枚16 + 12tダメージ、最大飛距離7 + 2.2t、発動間隔max(1.15, 3.1 − 0.35t)秒。",
+    "往路と復路の両方で同じ敵へ命中できます。",
+  ],
+  laser: [
+    "Tier t：1回15 + 11tダメージ、発動間隔max(0.46, 1.45 − 0.16t)秒。",
+    "体力の多い敵を優先し、一直線上を貫通します。",
+  ],
+  chain: [
+    "Tier t：連鎖1回9 + 7tダメージ、発動間隔max(0.82, 2.2 − 0.24t)秒。",
+    "Ricochetとの進化後は跳弾回数とダメージ計算が統合されます。",
+  ],
+  mine: [
+    "Tier t：地雷の寿命9 + 1.8t秒、爆発ダメージ30 + 18t、爆発半径2.8 + 0.95t。",
+    "設置数はTier t個。敵の接近半径は1.45 + 0.18tです。",
+  ],
+  fan: [
+    "Tier t：1本7 + 5tダメージ、発動間隔max(0.64, 1.85 − 0.2t)秒。",
+    "前方の扇形へ複数本のビームを展開します。",
+  ],
+  skyfall: [
+    "Tier t：1回22 + 16tダメージ、攻撃半径2.15 + 0.7t、発動間隔max(2.4, 5 − 0.55t)秒。",
+    "落下前の予告時間は0.5秒を基準に、同じ発動内の標識ごとに加算されます。",
+  ],
+  cleaver: [
+    "Tier t：1回15 + 10tダメージ、発動間隔max(1.1, 3.05 − 0.3t)秒。",
+    "横に広い斬撃で、攻撃方向の列をまとめて判定します。",
+  ],
+  needle: [
+    "Tier t：落下針1本8 + 6tダメージ、発動間隔max(1.6, 4.4 − 0.48t)秒。",
+    "1回の発動で複数の標的地点へ落下します。",
+  ],
+  saw: [
+    "Tier t：周回刃t基、同じ敵への再命中間隔max(0.1, 0.26 − 0.025t)秒、1回4 + 4tダメージ。",
+    "Novaとの進化後は周囲衝撃波も統合します。",
+  ],
+  harpoon: [
+    "Tier t：1本22 + 12tダメージ、持続1.15 + 0.38t秒、引き寄せ速度4.2 + 1.7t。",
+    "Tier 3では終了時に周囲へ追加ダメージを与えます。",
+  ],
+  thermal: [
+    "Tier t：連鎖数2 + 2t、各ヒット8 + 7tダメージ（ジャンプごとに+2）。発動間隔max(1, 2.85 − 0.27t)秒。",
+    "Tier 3では終点に10 + 7tダメージの追加爆発が発生します。",
+  ],
+  sonic: [
+    "Tier t：射程5.2 + 1.45t、扇の半角0.42 + 0.14t、1回18 + 10tダメージ、発動間隔max(1.1, 3.5 − 0.36t)秒。",
+    "押し戻し距離は0.8 + 0.4tです。",
+  ],
+  cluster: [
+    "Tier t：本弾16 + 10tダメージ、分裂数2 + 2t、発動間隔max(1.35, 3.35 − 0.32t)秒。",
+    "分裂弾は本弾ダメージの52%（最低7）、本弾の追尾速度は17 + 4tです。",
+  ],
+  corrosion: [
+    "Tier t：腐食持続2.1 + 0.75t秒、スタック上限2 + t、継続ダメージ間隔max(0.28, 0.72 − 0.08t)秒。",
+    "1 tickのダメージは2 + 2.3t + スタック数×1.4。スタック到達時の追加波は6 + 6tダメージです。",
+  ],
+};
+
 const synergyById: Partial<Record<UpgradeId, string>> = {
   vector: "イオンランスと両方レベル3で「ベクター・イオンランス」へ自動進化。",
   laser: "ベクターランスと両方レベル3で「ベクター・イオンランス」へ自動進化。",
@@ -331,6 +457,7 @@ export const WEAPON_LIBRARY: readonly WeaponLibraryEntry[] = UPGRADE_CATALOG.map
   role: roleById[option.id],
   description: option.description,
   levelDetails: levelDetails[option.id],
+  implementationNotes: implementationNotesById[option.id],
   synergy: synergyById[option.id],
   maxLevelText: maxLevelTextById[option.id],
   availability: availabilityById[option.id],
