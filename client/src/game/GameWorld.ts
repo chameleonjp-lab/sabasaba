@@ -190,6 +190,9 @@ export class GameWorld {
   private readonly magnetMaterial: StandardMaterial;
   private readonly ringMaterial: StandardMaterial;
   private readonly enemyThreatMaterial: StandardMaterial;
+  private readonly hazardLineMaterial: StandardMaterial;
+  private readonly hazardWaveMaterial: StandardMaterial;
+  private readonly hazardGroundMaterial: StandardMaterial;
   private readonly idleNeedleRedMaterial: StandardMaterial;
   private readonly idleNeedlePaleRedMaterial: StandardMaterial;
   private readonly enemies: Enemy[] = [];
@@ -365,6 +368,9 @@ export class GameWorld {
     this.magnetMaterial = this.makeMaterial("xp-magnet", new Color3(0.035, 0.12, 0.68), new Color3(0.1, 0.42, 1));
     this.ringMaterial = this.makeMaterial("safety-ring", new Color3(0.9, 0.22, 0.015), new Color3(1, 0.5, 0.03));
     this.enemyThreatMaterial = this.makeMaterial("enemy-threat-red", new Color3(0.46, 0.008, 0.006), new Color3(1, 0.025, 0.014));
+    this.hazardLineMaterial = this.makeMaterial("hazard-line", new Color3(0.72, 0.16, 0.01), new Color3(1, 0.42, 0.02));
+    this.hazardWaveMaterial = this.makeMaterial("hazard-wave", new Color3(0.52, 0.01, 0.18), new Color3(1, 0.03, 0.42));
+    this.hazardGroundMaterial = this.makeMaterial("hazard-ground", new Color3(0.62, 0.28, 0.01), new Color3(1, 0.55, 0.04));
     this.idleNeedleRedMaterial = this.makeMaterial("idle-needle-red", new Color3(0.72, 0.015, 0.01), new Color3(1, 0.05, 0.025));
     this.idleNeedlePaleRedMaterial = this.makeMaterial("idle-needle-pale-red", new Color3(0.84, 0.12, 0.08), new Color3(1, 0.26, 0.16));
 
@@ -449,7 +455,7 @@ export class GameWorld {
         boss.bossTimer = 0.72;
         boss.bossBursts = 3;
         boss.bossTarget.copyFrom(this.player.position);
-        boss.bossMarker = this.createBossWarning(boss.bossTarget, 1.85);
+        boss.bossMarker = this.createBossWarning(boss.bossTarget, 1.85, "barrage");
       }
     }
     if (this.strikerPreview) {
@@ -943,6 +949,9 @@ export class GameWorld {
     this.magnetMaterial.dispose();
     this.ringMaterial.dispose();
     this.enemyThreatMaterial.dispose();
+    this.hazardLineMaterial.dispose();
+    this.hazardWaveMaterial.dispose();
+    this.hazardGroundMaterial.dispose();
     this.idleNeedleRedMaterial.dispose();
     this.idleNeedlePaleRedMaterial.dispose();
   }
@@ -3467,6 +3476,7 @@ export class GameWorld {
       if (enemy.variantTelegraph) {
         enemy.variantTelegraph.position.copyFrom(enemy.mesh.position);
         enemy.variantTelegraph.position.y = 0.14;
+        enemy.variantTelegraph.rotation.y = enemy.mesh.rotation.y;
       }
       enemy.variantTelegraph?.scaling.setAll(0.82 + Math.sin(this.elapsed * 22) * 0.16);
       if (enemy.variantTelegraphTimer > 0) return 1;
@@ -3479,7 +3489,7 @@ export class GameWorld {
       enemy.variantTimer = config.trait === "pulse" ? 1.35 : config.trait === "siege" ? 1.75 : config.trait === "armor" ? 2.25 : 1.25 + Math.random() * 0.75;
       enemy.variantTelegraphTimer = VARIANT_TELEGRAPH_SECONDS;
       const diameter = config.trait === "pulse" ? (3.2 + enemy.scale * 1.1) * 2 : config.trait === "surge" || config.trait === "skirmish" ? 2.25 + enemy.scale : 2.7;
-      enemy.variantTelegraph = this.createVariantTelegraph(enemy, diameter);
+      enemy.variantTelegraph = this.createVariantTelegraph(enemy, diameter, config.trait);
       return 1;
     }
     if (config.trait === "surge" || config.trait === "skirmish") {
@@ -3500,17 +3510,24 @@ export class GameWorld {
     const wave = MeshBuilder.CreateTorus("variant-pulse-wave", { diameter: Math.max(0.86, radius * 0.42), thickness: 0.07, tessellation: 30 }, this.scene);
     wave.position.copyFrom(enemy.mesh.position);
     wave.position.y = 0.14;
-    wave.material = this.enemyThreatMaterial;
+    const trait = enemy.highVariant ? HIGH_VARIANTS[enemy.highVariant].trait : "pulse";
+    wave.material = trait === "pulse" || trait === "swarm" ? this.hazardWaveMaterial : trait === "siege" || trait === "armor" ? this.hazardGroundMaterial : this.hazardLineMaterial;
     this.shockwaves.push({ mesh: wave, life: damage > 0 ? 0.34 : 0.24, maxLife: damage > 0 ? 0.34 : 0.24 });
   }
 
-  private createVariantTelegraph(enemy: Enemy, diameter: number) {
+  private createVariantTelegraph(enemy: Enemy, diameter: number, trait: VariantTrait) {
     this.dangerSignal += 1;
     this.queueSound("warning");
-    const marker = MeshBuilder.CreateTorus("variant-warning", { diameter, thickness: 0.095, tessellation: 28 }, this.scene);
+    const isLine = trait === "surge" || trait === "skirmish" || trait === "drift";
+    const marker = isLine
+      ? MeshBuilder.CreateBox("variant-warning-line", { width: 0.14, height: 0.045, depth: Math.max(0.6, diameter) }, this.scene)
+      : trait === "siege" || trait === "armor"
+        ? MeshBuilder.CreateCylinder("variant-warning-ground", { height: 0.035, diameter: Math.max(0.2, diameter), tessellation: 6 }, this.scene)
+        : MeshBuilder.CreateTorus("variant-warning-ring", { diameter: Math.max(0.2, diameter), thickness: 0.095, tessellation: 28 }, this.scene);
     marker.position.copyFrom(enemy.mesh.position);
     marker.position.y = 0.14;
-    marker.material = this.enemyThreatMaterial;
+    marker.rotation.y = enemy.mesh.rotation.y;
+    marker.material = trait === "pulse" || trait === "swarm" ? this.hazardWaveMaterial : trait === "siege" || trait === "armor" ? this.hazardGroundMaterial : this.hazardLineMaterial;
     return marker;
   }
 
@@ -3560,7 +3577,7 @@ export class GameWorld {
     const dashWave = MeshBuilder.CreateTorus("striker-dash-end", { diameter: 0.4, thickness: 0.065, tessellation: 20 }, this.scene);
     dashWave.position.copyFrom(enemy.mesh.position);
     dashWave.position.y = 0.16;
-    dashWave.material = this.enemyThreatMaterial;
+    dashWave.material = this.hazardLineMaterial;
     this.shockwaves.push({ mesh: dashWave, life: 0.2, maxLife: 0.2 });
     enemy.strikerAction = "none";
     enemy.strikerCooldown = (enemy.bossEnraged ? 2.15 : 3.1) + Math.random() * 1.3;
@@ -3577,7 +3594,7 @@ export class GameWorld {
     marker.position.copyFrom(start.add(end).scale(0.5));
     marker.position.y = 0.12;
     marker.rotation.y = Math.atan2(direction.x, direction.z);
-    marker.material = this.enemyThreatMaterial;
+    marker.material = this.hazardLineMaterial;
     return marker;
   }
 
@@ -3599,13 +3616,13 @@ export class GameWorld {
       enemy.bossTimer = enemy.milestoneBoss ? 0.9 : 0.72;
       enemy.bossBursts = 3;
       enemy.bossTarget.copyFrom(this.player.position);
-      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 1.85);
+      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 1.85, "barrage");
       return;
     }
     if (distance < 4.9 && roll < 0.52) {
       enemy.bossAction = "shockwave";
       enemy.bossTimer = enemy.milestoneBoss ? 0.85 : 0.7;
-      enemy.bossMarker = this.createBossWarning(enemy.mesh.position, 3.8);
+      enemy.bossMarker = this.createBossWarning(enemy.mesh.position, 3.8, "shockwave");
       return;
     }
     if (distance > 7.2 && roll < 0.68) {
@@ -3616,13 +3633,13 @@ export class GameWorld {
       enemy.bossVector.y = 0;
       if (enemy.bossVector.lengthSquared() > 0.01) enemy.bossVector.normalize();
       enemy.bossChargeHit = false;
-      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 2.2);
+      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 2.2, "charge", enemy.mesh.position, enemy.bossTarget);
       return;
     }
     enemy.bossAction = "artillery";
     enemy.bossTimer = enemy.milestoneBoss ? 1.1 : 0.95;
     enemy.bossTarget.copyFrom(this.player.position);
-    enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 3.15);
+    enemy.bossMarker = this.createBossWarning(enemy.bossTarget, 3.15, "artillery");
   }
 
   private updateBulwarkAction(enemy: Enemy, delta: number) {
@@ -3637,12 +3654,12 @@ export class GameWorld {
       const radius = 1.85;
       const strike = MeshBuilder.CreateCylinder("bulwark-barrage", { height: 5.8, diameter: 0.18, tessellation: 8 }, this.scene);
       strike.position.copyFrom(enemy.bossTarget.add(new Vector3(0, 2.9, 0)));
-      strike.material = this.enemyThreatMaterial;
+      strike.material = this.hazardGroundMaterial;
       this.energyTraces.push({ mesh: strike, life: 0.13, maxLife: 0.13 });
       const wave = MeshBuilder.CreateTorus("bulwark-barrage-impact", { diameter: 0.56, thickness: 0.11, tessellation: 28 }, this.scene);
       wave.position.copyFrom(enemy.bossTarget);
       wave.position.y = 0.16;
-      wave.material = this.enemyThreatMaterial;
+      wave.material = this.hazardGroundMaterial;
       this.shockwaves.push({ mesh: wave, life: 0.32, maxLife: 0.32 });
       if (this.playerRingTouchesPoint(enemy.bossTarget, radius)) this.damagePlayer(10 + Math.floor(this.elapsed / 105), 0.42, "bulwark-barrage");
       enemy.bossBursts -= 1;
@@ -3652,7 +3669,7 @@ export class GameWorld {
       }
       const offsetAngle = this.elapsed * 3.3 + enemy.bossBursts * 2.2;
       enemy.bossTarget.copyFrom(this.player.position.add(new Vector3(Math.cos(offsetAngle) * 0.9, 0, Math.sin(offsetAngle) * 0.9)));
-      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, radius);
+      enemy.bossMarker = this.createBossWarning(enemy.bossTarget, radius, "barrage");
       enemy.bossTimer = enemy.milestoneBoss ? 0.55 : 0.4;
       return true;
     }
@@ -3666,7 +3683,7 @@ export class GameWorld {
       const wave = MeshBuilder.CreateTorus("bulwark-shockwave", { diameter: 0.65, thickness: 0.14, tessellation: 32 }, this.scene);
       wave.position.copyFrom(enemy.mesh.position);
       wave.position.y = 0.18;
-      wave.material = this.enemyThreatMaterial;
+      wave.material = this.hazardWaveMaterial;
       this.shockwaves.push({ mesh: wave, life: 0.46, maxLife: 0.46 });
       if (this.playerRingTouchesPoint(enemy.mesh.position, radius)) this.damagePlayer(12 + Math.floor(this.elapsed / 95), 0.48, "bulwark-shockwave");
       this.finishBulwarkAction(enemy, 4.4);
@@ -3679,12 +3696,12 @@ export class GameWorld {
       if (enemy.bossTimer > 0) return true;
       const strike = MeshBuilder.CreateCylinder("bulwark-artillery", { height: 6.2, diameter: 0.26, tessellation: 8 }, this.scene);
       strike.position.copyFrom(enemy.bossTarget.add(new Vector3(0, 3.1, 0)));
-      strike.material = this.enemyThreatMaterial;
+      strike.material = this.hazardGroundMaterial;
       this.energyTraces.push({ mesh: strike, life: 0.16, maxLife: 0.16 });
       const wave = MeshBuilder.CreateTorus("bulwark-artillery-impact", { diameter: 0.75, thickness: 0.13, tessellation: 28 }, this.scene);
       wave.position.copyFrom(enemy.bossTarget);
       wave.position.y = 0.16;
-      wave.material = this.enemyThreatMaterial;
+      wave.material = this.hazardGroundMaterial;
       this.shockwaves.push({ mesh: wave, life: 0.42, maxLife: 0.42 });
       if (this.playerRingTouchesPoint(enemy.bossTarget, 3.15)) this.damagePlayer(14 + Math.floor(this.elapsed / 85), 0.52, "bulwark-artillery");
       this.finishBulwarkAction(enemy, 4.8);
@@ -3711,13 +3728,24 @@ export class GameWorld {
     return true;
   }
 
-  private createBossWarning(position: Vector3, attackRadius: number) {
+  private createBossWarning(position: Vector3, attackRadius: number, action: Exclude<BossAction, "none">, lineStart?: Vector3, lineEnd?: Vector3) {
     this.dangerSignal += 1;
     this.queueSound("warning");
-    const marker = MeshBuilder.CreateTorus("bulwark-warning", { diameter: Math.max(0.2, attackRadius * 2), thickness: 0.1, tessellation: 28 }, this.scene);
-    marker.position.copyFrom(position);
+    const isChargeLine = action === "charge" && lineStart && lineEnd;
+    const marker = isChargeLine
+      ? MeshBuilder.CreateBox("bulwark-warning-line", { width: 0.18, height: 0.055, depth: Math.max(0.12, Vector3.Distance(lineStart!, lineEnd!)) }, this.scene)
+      : action === "shockwave"
+        ? MeshBuilder.CreateTorus("bulwark-warning-ring", { diameter: Math.max(0.2, attackRadius * 2), thickness: 0.1, tessellation: 28 }, this.scene)
+        : MeshBuilder.CreateCylinder("bulwark-warning-ground", { height: 0.035, diameter: Math.max(0.2, attackRadius * 2), tessellation: action === "barrage" ? 6 : 32 }, this.scene);
+    if (isChargeLine) {
+      const direction = lineEnd!.subtract(lineStart!);
+      marker.position.copyFrom(lineStart!.add(lineEnd!).scale(0.5));
+      marker.rotation.y = Math.atan2(direction.x, direction.z);
+    } else {
+      marker.position.copyFrom(position);
+    }
     marker.position.y = 0.14;
-    marker.material = this.enemyThreatMaterial;
+    marker.material = action === "charge" ? this.hazardLineMaterial : action === "shockwave" ? this.hazardWaveMaterial : this.hazardGroundMaterial;
     return marker;
   }
 

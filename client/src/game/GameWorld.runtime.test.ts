@@ -148,6 +148,35 @@ describe("GameWorld damage ordering", () => {
   });
 });
 
+describe("GameWorld hazard telegraph visuals", () => {
+  it("uses distinct line, ring, and ground warning markers", () => {
+    stubWindow();
+    const { engine, scene, world } = createNormalWorld(() => undefined);
+    const runtime = world as unknown as {
+      createStrikerDashWarning: (start: Vector3, end: Vector3) => { name: string; material: { name: string } | null; dispose: () => void };
+      createBossWarning: (position: Vector3, radius: number, action: "shockwave" | "charge" | "artillery" | "barrage", lineStart?: Vector3, lineEnd?: Vector3) => { name: string; material: { name: string } | null; dispose: () => void };
+    };
+
+    const line = runtime.createStrikerDashWarning(Vector3.Zero(), new Vector3(0, 0, 4));
+    const ring = runtime.createBossWarning(Vector3.Zero(), 2, "shockwave");
+    const ground = runtime.createBossWarning(Vector3.Zero(), 2, "artillery");
+
+    expect(line.name).toBe("striker-dash-warning");
+    expect(line.material?.name).toBe("hazard-line");
+    expect(ring.name).toBe("bulwark-warning-ring");
+    expect(ring.material?.name).toBe("hazard-wave");
+    expect(ground.name).toBe("bulwark-warning-ground");
+    expect(ground.material?.name).toBe("hazard-ground");
+
+    line.dispose();
+    ring.dispose();
+    ground.dispose();
+    world.dispose();
+    scene.dispose();
+    engine.dispose();
+  });
+});
+
 describe("GameWorld stationary hazard policy", () => {
   it("keeps the one-second stationary needle enabled during normal play", () => {
     stubWindow();
