@@ -733,6 +733,13 @@ button { font: inherit; }
 .weapon-level-section ol { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .weapon-level-section li { display: grid; grid-template-columns: 48px 1fr; gap: 9px; padding: 9px 10px; color: rgba(245, 239, 225, 0.8); border: 1px solid rgba(224, 218, 202, 0.14); background: rgba(9, 16, 16, 0.7); font-size: 11px; line-height: 1.5; }
 .weapon-level-section li b { color: #7eeaff; font: 700 10px "IBM Plex Mono", monospace; }
+.weapon-implementation-section { margin-top: 18px; padding: 14px 16px; border: 1px solid rgba(126, 234, 255, 0.28); background: rgba(11, 42, 50, 0.26); }
+.weapon-implementation-section > header { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; padding-bottom: 8px; border-bottom: 1px solid rgba(126, 234, 255, 0.2); }
+.weapon-implementation-section h3 { margin: 0; color: #e8ffff; font: 700 16px "Chakra Petch", sans-serif; letter-spacing: 0.05em; }
+.weapon-implementation-section > header span { color: #7eeaff; font: 600 9px/1.3 "IBM Plex Mono", monospace; text-align: right; }
+.weapon-implementation-section > p { margin: 9px 0 10px; color: rgba(215, 245, 243, 0.66); font-size: 10px; line-height: 1.55; }
+.weapon-implementation-section ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.weapon-implementation-section li { padding: 8px 10px; color: rgba(225, 247, 244, 0.8); border: 1px solid rgba(126, 234, 255, 0.14); background: rgba(5, 17, 20, 0.66); font-size: 10px; line-height: 1.55; }
 .weapon-synergy-section { margin-top: 18px; padding: 14px 16px; border: 1px solid rgba(89, 221, 255, 0.35); background: rgba(14, 51, 62, 0.3); }
 .weapon-synergy-section p { margin: 8px 0 0; color: rgba(215, 245, 243, 0.78); font-size: 11px; line-height: 1.6; }
 .weapon-availability { margin: 16px 0 0; color: rgba(255, 217, 151, 0.72); font-size: 10px; line-height: 1.55; }
@@ -746,6 +753,8 @@ button { font: inherit; }
   .weapon-library-close { width: 38px; height: 38px; font-size: 27px; }
   .weapon-level-section > header { display: grid; gap: 5px; }
   .weapon-level-section > header span { text-align: left; }
+  .weapon-implementation-section > header { display: grid; gap: 5px; }
+  .weapon-implementation-section > header span { text-align: left; }
 }
 
 /* Keep the rules trigger directly beneath the Endless option on wider screens. */
