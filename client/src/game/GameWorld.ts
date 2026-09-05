@@ -3733,7 +3733,7 @@ export class GameWorld {
     this.queueSound("warning");
     const isChargeLine = action === "charge" && lineStart && lineEnd;
     const marker = isChargeLine
-      ? MeshBuilder.CreateBox("bulwark-warning-line", { width: 0.18, height: 0.055, depth: Math.max(0.12, Vector3.Distance(lineStart, lineEnd)) }, this.scene)
+      ? MeshBuilder.CreateBox("bulwark-warning-line", { width: 0.18, height: 0.055, depth: Math.max(0.12, Vector3.Distance(lineStart!, lineEnd!)) }, this.scene)
       : action === "shockwave"
         ? MeshBuilder.CreateTorus("bulwark-warning-ring", { diameter: Math.max(0.2, attackRadius * 2), thickness: 0.1, tessellation: 28 }, this.scene)
         : MeshBuilder.CreateCylinder("bulwark-warning-ground", { height: 0.035, diameter: Math.max(0.2, attackRadius * 2), tessellation: action === "barrage" ? 6 : 32 }, this.scene);
