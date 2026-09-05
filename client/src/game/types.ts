@@ -134,6 +134,8 @@ export interface GameSnapshot {
   maxHealth: number;
   damageFlash: number;
   dangerSignal: number;
+  idleSeconds: number;
+  idleNeedleWaitSeconds: number;
   soundEvents: SoundEvent[];
   xp: number;
   xpNeeded: number;

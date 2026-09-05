@@ -22,6 +22,8 @@ import {
   DODGE_PERFECT_WINDOW_SECONDS,
   EARLY_SCOUT_MIN_HP,
   EARLY_STRIKER_MIN_HP,
+  IDLE_NEEDLE_DAMAGE,
+  IDLE_NEEDLE_WAIT_SECONDS,
   EVOLUTION_RECIPES,
   NORMAL_BOSS_TIMINGS,
   NORMAL_FINAL_BOSS_HP_MULTIPLIER,
@@ -119,8 +121,6 @@ const RECOVERY_DROP_CHANCE = 0.06;
 const MAGNET_DROP_CHANCE = 0.065 / 3;
 const PLAYER_RING_RADIUS = 1.28;
 const MAX_REROLLS_PER_RUN = 3;
-const IDLE_NEEDLE_WAIT_SECONDS = 1;
-const IDLE_NEEDLE_DAMAGE = 50;
 const BULWARK_DESTRUCTION_BLAST_RADIUS = 2.6;
 const MILESTONE_BOSS_HP_MULTIPLIER = 20;
 const MILESTONE_BOSS_SCALE_MULTIPLIER = 2;
@@ -4267,6 +4267,8 @@ export class GameWorld {
       maxHealth: this.maxHealth,
       damageFlash: this.damageFlash,
       dangerSignal: this.dangerSignal,
+      idleSeconds: Math.min(IDLE_NEEDLE_WAIT_SECONDS, Math.max(0, this.idleSeconds)),
+      idleNeedleWaitSeconds: IDLE_NEEDLE_WAIT_SECONDS,
       soundEvents: this.soundEvents.slice(),
       xp: this.xp,
       xpNeeded: this.xpNeeded,

@@ -441,6 +441,10 @@ button { font: inherit; }
 .dodge-button span { color: #afff6d; font: 700 15px / 1 "Chakra Petch", sans-serif; letter-spacing: .1em; }
 .dodge-button b { color: rgba(238, 255, 222, .7); font: 700 8px / 1 "IBM Plex Mono", monospace; letter-spacing: .1em; }
 .dodge-button i { position: absolute; left: 0; right: auto; bottom: 0; height: 4px; background: #afff6d; box-shadow: 0 0 10px #afff6d; transition: width .08s linear; }
+.idle-warning-cue { position: absolute; z-index: 8; right: max(18px, env(safe-area-inset-right)); bottom: calc(135px + clamp(86px, 12vw, 124px) + 10px + env(safe-area-inset-bottom)); display: grid; gap: 4px; min-width: 118px; padding: 7px 9px; pointer-events: none; color: #fff1de; text-align: right; border: 1px solid rgba(255, 92, 67, .72); background: rgba(45, 9, 8, .86); box-shadow: 0 5px 18px rgba(0, 0, 0, .35), 0 0 14px rgba(255, 92, 67, .18); animation: idle-warning-pulse .58s ease-in-out infinite alternate; }
+.idle-warning-cue span { color: #ffad98; font: 700 10px / 1 "Chakra Petch", sans-serif; letter-spacing: .08em; }
+.idle-warning-cue b { color: #fff1de; font: 700 8px / 1 "IBM Plex Mono", monospace; letter-spacing: .08em; }
+@keyframes idle-warning-pulse { from { opacity: .72; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
 .dodge-button:disabled { opacity: .46; cursor: not-allowed; }
 .modal-layer { z-index: 20; padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); overflow: auto; -webkit-overflow-scrolling: touch; }
 .tutorial-console, .pause-console { width: min(500px, 100%); padding: clamp(24px, 5vw, 42px); border: 1px solid rgba(117, 239, 236, .52); background: linear-gradient(145deg, rgba(8, 24, 26, .98), rgba(5, 10, 11, .99)); box-shadow: 0 24px 90px rgba(0, 0, 0, .72); }
@@ -535,6 +539,7 @@ button { font: inherit; }
   .combat-metrics b { font-size: 12px; }
   .mission-objective { top: calc(max(10px, env(safe-area-inset-top)) + 118px); max-width: 68vw; font-size: 8px; }
   .dodge-button { right: max(14px, env(safe-area-inset-right)); bottom: calc(150px + env(safe-area-inset-bottom)); width: clamp(82px, 21vw, 112px); height: clamp(82px, 21vw, 112px); }
+  .idle-warning-cue { right: max(14px, env(safe-area-inset-right)); bottom: calc(150px + clamp(82px, 21vw, 112px) + 10px + env(safe-area-inset-bottom)); }
   .result-goal-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
@@ -550,6 +555,7 @@ button { font: inherit; }
   .mission-objective { display: none; }
   .combat-metrics { top: calc(max(10px, env(safe-area-inset-top)) + 57px); }
   .dodge-button { bottom: calc(158px + env(safe-area-inset-bottom)); }
+  .idle-warning-cue { bottom: calc(158px + clamp(82px, 21vw, 112px) + 10px + env(safe-area-inset-bottom)); }
   .boss-reward-grid { grid-template-columns: 1fr; }
   .boss-reward-card { min-height: 74px; }
 }
@@ -560,6 +566,7 @@ button { font: inherit; }
   .pre-run-sigil { display: none; }
   .pre-run-purpose { margin: 10px 0 14px; }
   .dodge-button { bottom: calc(84px + env(safe-area-inset-bottom)); width: 78px; height: 78px; }
+  .idle-warning-cue { right: 14px; bottom: calc(84px + 78px + 10px + env(safe-area-inset-bottom)); }
   .dodge-button span { font-size: 11px; }
   .dodge-button b { font-size: 6px; }
   .combat-metrics { top: 48px; }
@@ -571,6 +578,7 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .pre-run-backdrop::after { display: none; }
   .dodge-button i, .tutorial-progress i { transition: none; }
+  .idle-warning-cue { animation: none; }
 }
 
 @media (hover: none) and (pointer: coarse) {
