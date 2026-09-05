@@ -13,6 +13,10 @@ export const NORMAL_SENTINEL_OVERFLOW_HEAL = 30;
 /** Contact with the player's visible safety ring is a fixed, separate hit. */
 export const PLAYER_RING_CONTACT_DAMAGE = 2;
 
+/** Stationary players receive a visible warning before the idle needle lands. */
+export const IDLE_NEEDLE_WAIT_SECONDS = 1;
+export const IDLE_NEEDLE_DAMAGE = 50;
+
 /** The opening Rail Pulse deals 14 damage, so opening enemies need two hits even during its temporary boost. */
 export const EARLY_SCOUT_MIN_HP = 18;
 export const EARLY_STRIKER_MIN_HP = 17;
