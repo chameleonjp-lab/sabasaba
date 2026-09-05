@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { createGameScene, type GameHandle } from "@/game/scene";
 import { GAME_ASSETS } from "@/game/assets";
-import { DODGE_COOLDOWN_SECONDS, selectSoundEventsForPlayback } from "@/game/rules";
+import { DODGE_COOLDOWN_SECONDS, IDLE_NEEDLE_WAIT_SECONDS, selectSoundEventsForPlayback } from "@/game/rules";
 import { MODULE_UPGRADES, type BossRewardId, type GameMode, type GameSnapshot, type IconId, type ModuleId, type UpgradeId } from "@/game/types";
 import { WEAPON_LIBRARY } from "@/game/weaponCatalog";
 import KillMilestoneRain from "@/components/KillMilestoneRain";
@@ -64,6 +64,8 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
   maxHealth: 100,
   damageFlash: 0,
   dangerSignal: 0,
+  idleSeconds: 0,
+  idleNeedleWaitSeconds: IDLE_NEEDLE_WAIT_SECONDS,
   soundEvents: [],
   xp: 0,
   xpNeeded: 9,
@@ -1089,6 +1091,10 @@ export default function GameCanvas() {
   const dodgeCooldown = Math.max(0, Number(snapshotView.dodgeCooldown ?? 0));
   const dodgeCooldownMax = Math.max(0.01, Number(snapshotView.dodgeCooldownMax ?? 1));
   const dodgePercent = clampPercent((1 - dodgeCooldown / dodgeCooldownMax) * 100);
+  const idleSeconds = Math.max(0, Number(snapshotView.idleSeconds ?? 0));
+  const idleNeedleWaitSeconds = Math.max(0.01, Number(snapshotView.idleNeedleWaitSeconds ?? IDLE_NEEDLE_WAIT_SECONDS));
+  const idleWarningVisible = snapshot.phase === "playing" && idleSeconds > 0 && idleSeconds < idleNeedleWaitSeconds;
+  const idleSecondsRemaining = Math.max(0, idleNeedleWaitSeconds - idleSeconds);
   const score = Number(snapshotView.score ?? 0);
   const combo = Number(snapshotView.combo ?? 0);
   const comboMultiplier = Number(snapshotView.comboMultiplier ?? 1);
@@ -1216,6 +1222,7 @@ export default function GameCanvas() {
         <footer className="loadout-rail" role="region" tabIndex={0} aria-label="装備レール。左右へスワイプして全ての武器とモジュールを確認" data-testid="loadout-rail"><div className="loadout-mark">装備<br /><strong>{String(snapshot.weaponCount).padStart(2, "0")}</strong></div>{snapshot.attacks.map((attack) => <div key={attack.id} className={`weapon-card ${attack.active ? "active" : "muted"}`}><ModuleIcon id={attack.iconId} className="weapon-glyph" /><div><b>{attack.label}</b><small>{attack.active ? `レベル${String(attack.tier).padStart(2, "0")} // ${attack.detail}` : attack.detail}</small></div></div>)}<div className="instruction"><kbd>W・A・S・D</kbd><span>境界を守る</span></div></footer>
         {snapshot.phase === "playing" && sceneReady && countdownRemaining === 0 && <div className="floating-control-surface" data-testid="touch-surface" role="group" aria-label="任意位置タップ移動エリア" onContextMenu={(event) => event.preventDefault()} onPointerDown={beginJoystick} onPointerMove={moveJoystick} onPointerUp={endJoystick} onPointerCancel={endJoystick} onLostPointerCapture={endJoystick} />}
         {floatingStick && <div className="touch-drive touch-drive-floating" data-testid="floating-stick" aria-hidden="true" style={{ left: floatingStick.x, top: floatingStick.y }}><span className="joystick-rings" /><span className="joystick-knob" style={{ transform: `translate(calc(-50% + ${stickOffset.x}px), calc(-50% + ${stickOffset.y}px))` }}><i /></span><small>移動操作</small></div>}
+        {idleWarningVisible && <div className="idle-warning-cue" data-testid="idle-warning" aria-label="停止針の警告"><span>停止中</span><b>針まで {idleSecondsRemaining.toFixed(1)}秒</b></div>}
         <button className="dodge-button" data-testid="dodge-button" type="button" onPointerDown={(event) => { event.preventDefault(); requestDodge(); }} onClick={requestDodge} disabled={!sceneReady || countdownRemaining > 0 || snapshot.phase !== "playing" || isPaused || dodgeCooldown > 0} aria-label={dodgeCooldown > 0 ? `回避再使用まで ${formatCooldown(dodgeCooldown)}` : "回避"}><span>回避</span><b>{dodgeCooldown > 0 ? `残り ${formatCooldown(dodgeCooldown)}` : "使用可能"}</b><i style={{ width: `${dodgePercent}%` }} /></button>
 
         {tutorialOpen && <div className="tutorial-layer" data-testid="tutorial-layer"><aside className="tutorial-console" role="dialog" aria-modal="true" aria-live="polite" aria-atomic="true" aria-labelledby="tutorial-title" data-dialog-root="true" data-testid="tutorial-dialog"><p className="modal-eyebrow">操作案内 // {tutorialStep + 1}/{tutorialSteps.length}</p><h2 id="tutorial-title">{tutorialSteps[tutorialStep].title}</h2><p>{tutorialSteps[tutorialStep].copy}</p><div className="tutorial-progress" role="progressbar" aria-label="案内の進行" aria-valuemin={1} aria-valuemax={tutorialSteps.length} aria-valuenow={tutorialStep + 1}><i style={{ width: `${((tutorialStep + 1) / tutorialSteps.length) * 100}%` }} /></div><footer><button data-testid="tutorial-dismiss" type="button" onClick={completeTutorial}>閉じる</button><button className="primary-dialog-button" data-testid="tutorial-next" type="button" onClick={() => advanceTutorial(true)}>{tutorialStep >= tutorialSteps.length - 1 ? "了解" : "次へ"}</button></footer></aside></div>}
