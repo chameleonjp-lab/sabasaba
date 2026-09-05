@@ -166,6 +166,32 @@ describe("GameWorld stationary hazard policy", () => {
     engine.dispose();
   });
 
+  it("publishes the stationary timer without changing its one-second trigger", () => {
+    stubWindow();
+    let latestSnapshot: GameSnapshot | undefined;
+    const { engine, scene, world } = createNormalWorld((snapshot) => { latestSnapshot = snapshot; });
+    const runtime = world as unknown as {
+      idleSeconds: number;
+      idleNeedles: unknown[];
+      updateIdleHazard: (delta: number, playerMoved: boolean) => void;
+      emitSnapshot: () => void;
+    };
+
+    runtime.updateIdleHazard(0.5, false);
+    runtime.emitSnapshot();
+
+    expect(latestSnapshot?.idleSeconds).toBeCloseTo(0.5, 6);
+    expect(latestSnapshot?.idleNeedleWaitSeconds).toBe(1);
+    expect(runtime.idleNeedles).toHaveLength(0);
+
+    runtime.updateIdleHazard(0.5, false);
+    expect(runtime.idleNeedles).toHaveLength(1);
+
+    world.dispose();
+    scene.dispose();
+    engine.dispose();
+  });
+
   it("freezes the stationary needle while the run is manually paused", () => {
     stubWindow();
     const { engine, scene, world } = createNormalWorld(() => undefined);
