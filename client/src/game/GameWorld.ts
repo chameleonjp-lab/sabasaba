@@ -86,7 +86,7 @@ type StrikerAction = "none" | "windup" | "dash";
 type PlayerDamageSource = "idle-needle" | "contact" | "variant-pulse" | "striker-dash" | "bulwark-barrage" | "bulwark-shockwave" | "bulwark-artillery" | "bulwark-charge" | "bulwark-destruction";
 type PlayerDamageResult = "damaged" | "perfect" | "blocked";
 type Enemy = { mesh: AbstractMesh; kind: EnemyKind; hp: number; maxHp: number; speed: number; scale: number; contactDamage: number; xpValue: number; hitRadius: number; lastDamagedBy?: AttackId; highVariant?: HighVariantId; milestoneBoss?: boolean; missionBossStage?: 1 | 2 | 3; milestoneCrown?: AbstractMesh; variantTimer: number; variantBurst: number; variantTelegraphTimer: number; variantTelegraph?: AbstractMesh; variantAura?: AbstractMesh; healthFill?: AbstractMesh; hitFlash: number; orbitCooldown: number; cryoTime: number; corrosionTime: number; corrosionStacks: number; corrosionTick: number; corrosionMark?: AbstractMesh; enteringContainment: boolean; strikerAction: StrikerAction; strikerTimer: number; strikerCooldown: number; strikerVector: Vector3; strikerDashHit: boolean; strikerPerfectDodge: boolean; strikerMarker?: AbstractMesh; bossAction: BossAction; bossTimer: number; bossCooldown: number; bossTarget: Vector3; bossVector: Vector3; bossChargeHit: boolean; bossBursts: number; bossEnraged: boolean; bossMarker?: AbstractMesh; vulnerableTime: number; summonTimer: number; lastTargetedAt: number };
-type Projectile = { mesh: AbstractMesh; velocity: Vector3; damage: number; life: number; hitRadius: number; source: AttackId };
+type Projectile = { mesh: AbstractMesh; velocity: Vector3; damage: number; life: number; hitRadius: number; source: AttackId; trailStart?: Vector3 };
 type CombatStat = { damage: number; kills: number };
 type Gem = { mesh: AbstractMesh; value: number; magnetized: boolean };
 type RecoveryItem = { mesh: AbstractMesh; amount: number; life: number };
@@ -114,6 +114,10 @@ const CONTAINMENT_WALL_BOUND = 32.3;
 const MIN_COMBAT_RADIUS = 19;
 const INGRESS_TARGET_BUFFER = 17;
 const PROJECTILE_HEIGHT = 0.86;
+// Presentation time is independent of collision-safe simulation catch-up.
+// A slow display must still have several opportunities to show short effects.
+const MAX_PRESENTATION_STEP_SECONDS = 0.05;
+const PROJECTILE_IMPACT_LIFE_SECONDS = 0.14;
 const DROP_LIFETIME = 14;
 const DROP_WARNING_WINDOW = 4.5;
 const DROP_FADE_WINDOW = 1.25;
@@ -571,6 +575,23 @@ export class GameWorld {
     if (this.emitTimer <= 0) {
       this.emitTimer = SNAPSHOT_INTERVAL_SECONDS;
       this.emitSnapshot();
+    }
+  }
+
+  /**
+   * Advance existing visual-only effects once BEFORE this render's simulation
+   * steps. Effects born during catch-up therefore survive until scene.render().
+   * Never advance gameplay timers, damage, movement, or attack cooldowns here.
+   */
+  updatePresentation(delta: number) {
+    if (!this.isSimulationRunning()) return;
+    const safeDelta = Number.isFinite(delta) ? Math.min(Math.max(0, delta), MAX_PRESENTATION_STEP_SECONDS) : 0;
+    this.updateShockwaves(safeDelta);
+    this.updateEnergyTraces(safeDelta);
+    // Remember the last displayed point, not every simulation substep.
+    for (const projectile of this.projectiles) {
+      if (projectile.trailStart) projectile.trailStart.copyFrom(projectile.mesh.position);
+      else projectile.trailStart = projectile.mesh.position.clone();
     }
   }
 
@@ -1659,6 +1680,7 @@ export class GameWorld {
       if (enemyIndex >= 0) {
         const enemy = this.enemies[enemyIndex];
         if (this.debugMode) this.debugProjectileCollisions = Math.min(MAX_TRACKED_KILLS, this.debugProjectileCollisions + 1);
+        this.showProjectileImpact(projectile, previousPosition);
         this.applyDamage(enemy, projectile.damage, projectile.source);
         enemy.hitFlash = 0.12;
         projectile.mesh.dispose();
@@ -1708,9 +1730,23 @@ export class GameWorld {
     bolt.position = this.player.position.add(direction.scale(0.7));
     bolt.position.y = PROJECTILE_HEIGHT;
     bolt.material = this.projectileMaterial;
-    this.projectiles.push({ mesh: bolt, velocity: direction.scale(speed), damage, life: 2.2, hitRadius: 0.76 + diameter, source });
+    this.projectiles.push({ mesh: bolt, velocity: direction.scale(speed), damage, life: 2.2, hitRadius: 0.76 + diameter, source, trailStart: bolt.position.clone() });
     if (this.debugMode) this.debugProjectilesFired = Math.min(MAX_TRACKED_KILLS, this.debugProjectilesFired + 1);
     this.queueAttackSound();
+  }
+
+  private showProjectileImpact(projectile: Projectile, previousPosition: Vector3) {
+    if (!this.isSimulationActive()) return;
+    const start = projectile.trailStart ?? previousPosition;
+    const end = projectile.mesh.position;
+    this.createEnergyTrace(start, end, 0.1, this.projectileMaterial, PROJECTILE_IMPACT_LIFE_SECONDS);
+    const flash = MeshBuilder.CreateSphere("projectile-hit-flash", { diameter: 0.46, segments: 6 }, this.scene);
+    flash.position.copyFrom(end);
+    flash.material = this.projectileMaterial;
+    flash.isPickable = false;
+    // This mesh has no velocity, damage, or collision entry. The actual bullet
+    // is still disposed immediately by updateCombat, exactly once per hit.
+    this.energyTraces.push({ mesh: flash, life: PROJECTILE_IMPACT_LIFE_SECONDS, maxLife: PROJECTILE_IMPACT_LIFE_SECONDS });
   }
 
   private createCombatStats(): Record<AttackId, CombatStat> {
@@ -1810,7 +1846,6 @@ export class GameWorld {
   }
 
   private updateModules(delta: number) {
-    this.updateShockwaves(delta);
     if (!this.isSimulationActive()) return;
     this.updatePylons(delta);
     if (!this.isSimulationActive()) return;
@@ -1827,8 +1862,6 @@ export class GameWorld {
     this.updateSplitShells(delta);
     if (!this.isSimulationActive()) return;
     this.updateReturnBlades(delta);
-    if (!this.isSimulationActive()) return;
-    this.updateEnergyTraces(delta);
     if (!this.isSimulationActive()) return;
     this.updateMines(delta);
     if (!this.isSimulationActive()) return;
@@ -3192,7 +3225,7 @@ export class GameWorld {
     bolt.position = origin.add(direction.scale(0.55));
     bolt.position.y = PROJECTILE_HEIGHT;
     bolt.material = this.projectileMaterial;
-    this.projectiles.push({ mesh: bolt, velocity: direction.scale(speed), damage, life: 1.35, hitRadius: 0.76 + diameter, source });
+    this.projectiles.push({ mesh: bolt, velocity: direction.scale(speed), damage, life: 1.35, hitRadius: 0.76 + diameter, source, trailStart: bolt.position.clone() });
     if (this.debugMode) this.debugProjectilesFired = Math.min(MAX_TRACKED_KILLS, this.debugProjectilesFired + 1);
     this.queueAttackSound();
   }
