@@ -90,6 +90,7 @@ for (const mode of ["normal", "endless"] as const) {
       expect(flash!.mesh.isDisposed()).toBe(false);
       expect(flash!.mesh.visibility).toBeGreaterThan(0);
       expect(flash!.mesh.isPickable).toBe(false);
+      expect(flash!.mesh.renderingGroupId).toBe(1);
       expect(fixture.runtime.combatStats.rail.damage).toBe(14);
     });
 
@@ -121,6 +122,7 @@ for (const mode of ["normal", "endless"] as const) {
       expect(fixture.runtime.projectiles).toHaveLength(1);
       expect(fixture.runtime.energyTraces).toHaveLength(0);
       const shot = fixture.runtime.projectiles[0];
+      expect(shot.mesh.renderingGroupId).toBe(0);
       const displayedPosition = shot.mesh.position.clone();
       renderFrame(fixture, 1 / 60);
       expect(shot.trailStart?.equals(displayedPosition)).toBe(true);
