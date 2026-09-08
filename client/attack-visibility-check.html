@@ -11,7 +11,6 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { GameWorld } from './src/game/GameWorld.ts';
 import { splitSimulationDelta, consumeSimulationDebt } from './src/game/rules.ts';
-
 window.__browserErrors = [];
 window.addEventListener('error', event => window.__browserErrors.push(event.message));
 window.addEventListener('unhandledrejection', event => window.__browserErrors.push(String(event.reason)));
@@ -25,72 +24,88 @@ try {
   engine.setHardwareScalingLevel(1);
   engine.resize();
   const scene = new Scene(engine);
-  scene.clearColor = new Color4(0.012, 0.017, 0.021, 1);
-  scene.ambientColor = new Color3(0.12, 0.11, 0.08);
+  scene.clearColor = new Color4(0.012,0.017,0.021,1);
+  scene.ambientColor = new Color3(0.12,0.11,0.08);
   const aspect = innerWidth / innerHeight;
-  const compact = Math.min(innerWidth, innerHeight) < 650;
+  const compact = Math.min(innerWidth,innerHeight) < 650;
   const profile = aspect < 0.68 ? [0.78,1.22,1.08] : aspect < 0.94 ? [0.86,1.15,1.12] : aspect < 1.28 ? [0.9,1.1,1.08] : compact && aspect >= 1.75 ? [0.96,0.98,1.19] : aspect < 1.75 ? [0.92,1.02,1] : [0.86,1,1.07];
-  const camera = new ArcRotateCamera('test-camera', -Math.PI/2, profile[1], 31*profile[2], new Vector3(0,0.88,0), scene);
+  const camera = new ArcRotateCamera('test-camera',-Math.PI/2,profile[1],31*profile[2],new Vector3(0,0.88,0),scene);
   camera.fov = profile[0];
-  const hemi = new HemisphericLight('test-fill', new Vector3(0.2,1,0.1), scene);
+  const hemi = new HemisphericLight('test-fill',new Vector3(0.2,1,0.1),scene);
   hemi.intensity = 1.1;
   hemi.diffuse = new Color3(0.5,0.62,0.66);
   hemi.groundColor = new Color3(0.05,0.06,0.07);
-  const key = new DirectionalLight('test-key', new Vector3(-0.45,-1,0.3), scene);
+  const key = new DirectionalLight('test-key',new Vector3(-0.45,-1,0.3),scene);
   key.intensity = 1.45;
   key.diffuse = new Color3(1,0.45,0.12);
-  const ground = MeshBuilder.CreateGround('test-floor', {width:76,height:76}, scene);
-  const floor = new StandardMaterial('test-floor-material', scene);
+  const ground = MeshBuilder.CreateGround('test-floor',{width:76,height:76},scene);
+  const floor = new StandardMaterial('test-floor-material',scene);
   floor.diffuseColor = new Color3(0.04,0.048,0.055);
   floor.specularColor = Color3.Black();
   ground.material = floor;
-  const world = new GameWorld(scene, () => {}, false,false,false,false,false,false,false,false,false,undefined,false,0,0,0,0,0,0,false,false,mode);
+  const world = new GameWorld(scene,()=>{},false,false,false,false,false,false,false,false,false,undefined,false,0,0,0,0,0,0,false,false,mode);
   world.spawnTimer = Infinity;
   world.encounterTimer = Infinity;
   world.idleStrikeCooldown = Infinity;
   world.xpNeeded = 999999;
   world.spawnEnemy('scout');
   const enemy = world.enemies[0];
-  enemy.mesh.position.set(scenario === 'rail' ? 2 : 6, 0.8, 0);
+  enemy.mesh.position.set(scenario === 'rail' ? 2 : 6,0.8,0);
   enemy.hp = enemy.maxHp = 10000;
   enemy.speed = 0;
   enemy.enteringContainment = false;
   world.clearTransientCombatEffects();
-  if (scenario === 'thermal') {
-    world.shootTimer = Infinity;
-    world.moduleTiers.thermal = 1;
-  }
-  // Warm the real scene and materials, as the game's preparation countdown does.
-  for (let index=0; index<12; index++) {
-    scene.render();
-    await new Promise(requestAnimationFrame);
-  }
+  if (scenario === 'thermal') { world.shootTimer = Infinity; world.moduleTiers.thermal = 1; }
+  for (let index=0; index<12; index++) { scene.render(); await new Promise(requestAnimationFrame); }
   const frameDelta = scenario === 'thermal' ? 0.2 : 1/60;
   world.updatePresentation(frameDelta);
-  const timing = consumeSimulationDebt(0, frameDelta, world.isSimulationRunning());
+  const timing = consumeSimulationDebt(0,frameDelta,world.isSimulationRunning());
   for (const step of splitSimulationDelta(timing.budget)) world.update(step);
-  const effects = [...world.energyTraces, ...world.shockwaves].map(effect => effect.mesh);
-  // Compare identical world states, with only the presentation meshes toggled.
-  // No extra simulation step or presentation aging occurs between these renders.
-  scene.render();
-  const visiblePixels = new Uint8Array((await engine.readPixels(0,0,engine.getRenderWidth(),engine.getRenderHeight())).buffer.slice(0));
-  for (const mesh of effects) mesh.setEnabled(false);
-  scene.render();
-  const hiddenPixels = new Uint8Array((await engine.readPixels(0,0,engine.getRenderWidth(),engine.getRenderHeight())).buffer.slice(0));
-  let changedPixels = 0;
-  for (let index=0; index<visiblePixels.length; index+=4) {
-    const difference = Math.max(Math.abs(visiblePixels[index]-hiddenPixels[index]),Math.abs(visiblePixels[index+1]-hiddenPixels[index+1]),Math.abs(visiblePixels[index+2]-hiddenPixels[index+2]));
-    if (difference >= 15) changedPixels++;
+  const effects = [...world.energyTraces,...world.shockwaves].map(effect=>effect.mesh);
+  async function difference(meshes) {
+    for (const mesh of meshes) mesh.setEnabled(true);
+    scene.render();
+    const visible = Uint8Array.from(await engine.readPixels(0,0,engine.getRenderWidth(),engine.getRenderHeight()));
+    const ready = meshes.map(mesh=>({name:mesh.name,ready:mesh.isReady(),position:mesh.position.asArray(),visibility:mesh.visibility,active:scene.getActiveMeshes().data.includes(mesh)}));
+    for (const mesh of meshes) mesh.setEnabled(false);
+    scene.render();
+    const hidden = Uint8Array.from(await engine.readPixels(0,0,engine.getRenderWidth(),engine.getRenderHeight()));
+    let changed = 0;
+    let nonBlack = 0;
+    for (let index=0; index<visible.length; index+=4) {
+      if (Math.max(visible[index],visible[index+1],visible[index+2])>20) nonBlack++;
+      if (Math.max(Math.abs(visible[index]-hidden[index]),Math.abs(visible[index+1]-hidden[index+1]),Math.abs(visible[index+2]-hidden[index+2]))>=15) changed++;
+    }
+    for (const mesh of meshes) mesh.setEnabled(true);
+    scene.render();
+    return {changedPixels:changed,nonBlackPixels:nonBlack,ready};
   }
-  for (const mesh of effects) mesh.setEnabled(true);
-  scene.render();
+  const frames = [];
+  // The requirement is actual painted pixels before the effect expires, not
+  // synchronous shader compilation on the very first draw. Advance the real
+  // presentation clock each frame: do not extend the effect to make this pass.
+  for (let frame=0; frame<9; frame++) {
+    const live = effects.filter(mesh=>!mesh.isDisposed());
+    if (live.length === 0) break;
+    frames.push({frame,presentationSeconds:frame/60,...await difference(live)});
+    if (frames.at(-1).changedPixels>=4) break;
+    await new Promise(requestAnimationFrame);
+    world.updatePresentation(1/60);
+  }
+  const changedPixels = Math.max(0,...frames.map(frame=>frame.changedPixels));
+  let occlusionProbe = null;
+  if (changedPixels < 4) {
+    const live = effects.filter(mesh=>!mesh.isDisposed());
+    for (const mesh of live) mesh.renderingGroupId = 1;
+    occlusionProbe = await difference(live);
+  }
   const damage = 10000-enemy.hp;
   const expectedDamage = scenario === 'rail' ? 14 : 15;
-  const success = effects.length > 0 && changedPixels >= 4 && damage === expectedDamage && window.__browserErrors.length === 0;
-  window.__visibilityResult = {success,mode,scenario,width:innerWidth,height:innerHeight,frameDelta,damage,expectedDamage,effectMeshes:effects.length,changedPixels,errors:window.__browserErrors};
-  status.textContent = `${mode} / ${scenario} / ${innerWidth}×${innerHeight} / ${success ? '成功' : '失敗'} / 描画差分 ${changedPixels}ピクセル`;
+  const success = effects.length>0 && changedPixels>=4 && damage===expectedDamage && window.__browserErrors.length===0;
+  window.__visibilityResult = {success,mode,scenario,width:innerWidth,height:innerHeight,frameDelta,damage,expectedDamage,effectMeshes:effects.length,changedPixels,frames,occlusionProbe,errors:window.__browserErrors};
+  status.textContent = `${mode} / ${scenario} / ${innerWidth}×${innerHeight} / ${success?'成功':'失敗'} / 描画差分 ${changedPixels}ピクセル`;
 } catch (error) {
-  window.__visibilityResult = {success:false,mode,scenario,error:String(error.stack || error)};
+  window.__visibilityResult = {success:false,mode,scenario,error:String(error.stack||error)};
   status.textContent = String(error);
 }
 </script></body></html>

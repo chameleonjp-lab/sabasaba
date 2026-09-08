@@ -4,12 +4,22 @@ on:
     branches: [validation/sabasaba-attack-visibility-20260909]
 permissions:
   contents: read
+  actions: write
 jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      - name: Stop the superseded preparation run for this verification branch only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=$(gh api repos/chameleonjp-lab/sabasaba/actions/runs/34252330496 --jq '.head_branch')
+          state=$(gh api repos/chameleonjp-lab/sabasaba/actions/runs/34252330496 --jq '.status')
+          if [ "$branch" = 'validation/sabasaba-attack-visibility-20260909' ] && [ "$state" != completed ]; then
+            gh run cancel 34252330496 --repo chameleonjp-lab/sabasaba
+          fi
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -54,6 +64,7 @@ jobs:
           "$ab" snapshot -i | tee "$RUNNER_TEMP/visibility-evidence/home-snapshot.txt"
           "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/home.png"
           "$ab" eval '(() => { if (!document.body.innerText.includes("サバサバ") || document.querySelector("vite-error-overlay")) throw new Error("Home screen is not ready"); return "Home screen rendered"; })()'
+          failed=0
           for size in '390 844' '844 390' '1280 720'; do
             read -r width height <<< "$size"
             "$ab" set viewport "$width" "$height"
@@ -62,11 +73,14 @@ jobs:
                 name="$mode-$scenario-$width-$height"
                 "$ab" open "http://127.0.0.1:4173/sabasaba/attack-visibility-check.html?mode=$mode&case=$scenario"
                 "$ab" wait --load networkidle
-                "$ab" eval '(async () => { for (let attempt=0; attempt<100; attempt++) { const result=window.__visibilityResult; if (result) { if (!result.success) throw new Error(JSON.stringify(result)); return JSON.stringify(result); } await new Promise(resolve => setTimeout(resolve,100)); } throw new Error("Rendering verification timed out"); })()' | tee "$RUNNER_TEMP/visibility-evidence/$name.json"
+                "$ab" eval '(async () => { for (let attempt=0; attempt<100; attempt++) { if(window.__visibilityResult) return JSON.stringify(window.__visibilityResult); await new Promise(resolve => setTimeout(resolve,100)); } throw new Error("Rendering verification timed out"); })()' | tee "$RUNNER_TEMP/visibility-evidence/$name.json"
                 "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/$name.png"
+                "$ab" errors | tee "$RUNNER_TEMP/visibility-evidence/$name-errors.txt"
+                if ! "$ab" eval '(() => { if (!window.__visibilityResult?.success) throw new Error(JSON.stringify(window.__visibilityResult)); return "PASS"; })()'; then failed=1; fi
               done
             done
           done
+          test "$failed" -eq 0
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4
