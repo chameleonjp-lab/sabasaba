@@ -1,78 +1,116 @@
-name: Prepare attack visibility fix
+name: Verify and publish attack hit feedback correction
 on:
   push:
     branches: [automation/sabasaba-attack-visibility-20260909]
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: prepare-sabasaba-attack-visibility
   cancel-in-progress: false
 jobs:
   repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 7
     env:
-      BASE_SHA: 1b3b5e9d6a1003567bdf5ee96d62d687e314aea7
+      BASE_SHA: 9d6a38531fae122023d186d80ed4dd7777c3b3eb
       TARGET_BRANCH: fix/sabasaba-attack-visibility-20260909
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check the exact fix branch before changing it
+        run: test "$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")" = "$BASE_SHA"
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Existing baseline checks
-        run: pnpm run check && pnpm run test:rules
-      - name: Reproduce the missing effects in the original GameWorld
-        shell: bash
-        run: |
-          set +e
-          pnpm exec vitest run client/src/game/GameWorld.presentation.test.ts --reporter=json --outputFile="$RUNNER_TEMP/visibility-before.json"
-          result=$?
-          set -e
-          test "$result" -eq 1
-          node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/visibility-before.json","utf8")); if(!(r.numFailedTests>0)) throw Error("Expected a reproduced regression"); console.log("Original implementation failed",r.numFailedTests,"of",r.numTotalTests,"presentation checks");'
-      - name: Apply isolated presentation fix
+      - name: Correct feedback occlusion and add rendering-order assertions
         run: node scripts/_apply-attack-visibility-fix.mjs
-      - name: Verify the complete patched implementation
+      - name: Verify types, all rules and runtime tests, and build
         run: |
           pnpm run check
           pnpm run test:rules
           pnpm run build
           git diff --check
-      - name: Record changes and publish only the isolated fix branch
+      - name: Install pinned verifier and the unchanged browser regression harness
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/visibility-evidence"
+          git show f836e2979c78a94a62795a58061a9dcd8a8bec4a:client/attack-visibility-check.html > client/attack-visibility-check.html
+          timeout 80s npm install --prefix "$RUNNER_TEMP/visibility-browser" --fetch-retries=0 --fetch-timeout=15000 --no-audit --no-fund agent-browser@0.33.2 2>&1 | tee "$RUNNER_TEMP/visibility-evidence/install.log"
+          ab="$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser"
+          "$ab" --version | tee "$RUNNER_TEMP/visibility-evidence/browser-version.txt"
+          chrome=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+          test -n "$chrome"
+          echo "AGENT_BROWSER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
+          "$chrome" --version | tee -a "$RUNNER_TEMP/visibility-evidence/browser-version.txt"
+      - name: Verify actual WebGL pixels in both modes and three viewports
+        timeout-minutes: 3
+        shell: bash
+        env:
+          AGENT_BROWSER_ARGS: --enable-unsafe-swiftshader
+        run: |
+          pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/visibility-evidence/vite.log" 2>&1 &
+          server=$!
+          ab="$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser"
+          trap '"$ab" close || true; kill "$server" || true' EXIT
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/sabasaba/ > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          "$ab" open http://127.0.0.1:4173/sabasaba/
+          "$ab" wait --load networkidle
+          "$ab" snapshot -i | tee "$RUNNER_TEMP/visibility-evidence/home-snapshot.txt"
+          "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/home.png"
+          "$ab" eval '(() => { if (!document.body.innerText.includes("サバサバ") || document.querySelector("vite-error-overlay")) throw new Error("Home screen is not ready"); return "Home screen rendered"; })()'
+          failed=0
+          for size in '390 844' '844 390' '1280 720'; do
+            read -r width height <<< "$size"
+            "$ab" set viewport "$width" "$height"
+            for mode in normal endless; do
+              for scenario in rail thermal; do
+                name="$mode-$scenario-$width-$height"
+                "$ab" open "http://127.0.0.1:4173/sabasaba/attack-visibility-check.html?mode=$mode&case=$scenario"
+                "$ab" wait --load networkidle
+                "$ab" eval '(async () => { for (let attempt=0; attempt<100; attempt++) { if(window.__visibilityResult) return JSON.stringify(window.__visibilityResult); await new Promise(resolve => setTimeout(resolve,100)); } throw new Error("Rendering verification timed out"); })()' | tee "$RUNNER_TEMP/visibility-evidence/$name.json"
+                "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/$name.png"
+                "$ab" errors | tee "$RUNNER_TEMP/visibility-evidence/$name-errors.txt"
+                if ! "$ab" eval '(() => { if (!window.__visibilityResult?.success) throw new Error(JSON.stringify(window.__visibilityResult)); return "PASS"; })()'; then failed=1; fi
+              done
+            done
+          done
+          test "$failed" -eq 0
+      - name: Commit only the verified fix, without helper workflows or test pages
         shell: bash
         run: |
           git config user.name 'chatgpt-code-review'
           git config user.email 'chatgpt-code-review@users.noreply.github.com'
           git rm .github/workflows/_repair-attack-visibility.yml scripts/_apply-attack-visibility-fix.mjs
-          git add client/src/game/GameWorld.ts client/src/game/scene.ts client/src/game/GameWorld.presentation.test.ts package.json docs/ATTACK_VISIBILITY_FIX.md
+          rm client/attack-visibility-check.html
+          git add client/src/game/GameWorld.ts client/src/game/GameWorld.presentation.test.ts docs/ATTACK_VISIBILITY_FIX.md
           tree=$(git write-tree)
           git diff --name-only "$BASE_SHA" "$tree" > "$RUNNER_TEMP/visibility-files.txt"
-          node --input-type=module -e 'import fs from "node:fs"; const actual=fs.readFileSync(process.env.RUNNER_TEMP+"/visibility-files.txt","utf8").trim().split("\n").sort(); const expected=["client/src/game/GameWorld.ts","client/src/game/scene.ts","client/src/game/GameWorld.presentation.test.ts","package.json","docs/ATTACK_VISIBILITY_FIX.md"].sort(); if(JSON.stringify(actual)!==JSON.stringify(expected)) throw Error("Unexpected files: "+actual);'
-          parent="$BASE_SHA"
-          if git show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
-            parent=$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")
-          fi
-          commit=$(printf '%s\n' 'fix: retain attack visuals without delaying combat' | git commit-tree "$tree" -p "$parent")
+          node --input-type=module -e 'import fs from "node:fs"; const a=fs.readFileSync(process.env.RUNNER_TEMP+"/visibility-files.txt","utf8").trim().split("\n").sort(); const e=["client/src/game/GameWorld.ts","client/src/game/GameWorld.presentation.test.ts","docs/ATTACK_VISIBILITY_FIX.md"].sort(); if(JSON.stringify(a)!==JSON.stringify(e)) throw Error("Unexpected diff: "+a);'
+          git fetch origin "$TARGET_BRANCH"
+          test "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA"
+          commit=$(printf '%s\n' 'fix: keep close-range hit confirmation in front of enemy geometry' | git commit-tree "$tree" -p "$BASE_SHA")
           git update-ref "refs/heads/$TARGET_BRANCH" "$commit"
           git push origin "refs/heads/$TARGET_BRANCH:refs/heads/$TARGET_BRANCH"
-          git diff "$BASE_SHA" "$commit" > "$RUNNER_TEMP/visibility-fix.patch"
-          printf 'Fix commit: %s\n' "$commit" | tee "$RUNNER_TEMP/visibility-commit.txt"
-          git archive --format=tar.gz "$commit" > "$RUNNER_TEMP/visibility-source.tar.gz"
-      - name: Upload investigation and verified source
+          git diff "$BASE_SHA" "$commit" > "$RUNNER_TEMP/visibility-evidence/feedback-fix.patch"
+          printf 'Verified fix commit: %s\n' "$commit" | tee "$RUNNER_TEMP/visibility-evidence/verified-commit.txt"
+          git archive --format=tar.gz "$commit" > "$RUNNER_TEMP/visibility-evidence/verified-source.tar.gz"
+      - name: Upload verification evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: attack-visibility-verification
-          path: |
-            ${{ runner.temp }}/visibility-before.json
-            ${{ runner.temp }}/visibility-fix.patch
-            ${{ runner.temp }}/visibility-commit.txt
-            ${{ runner.temp }}/visibility-source.tar.gz
+          name: attack-visibility-final-evidence
+          path: ${{ runner.temp }}/visibility-evidence/
           retention-days: 7
