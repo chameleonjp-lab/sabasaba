@@ -1744,6 +1744,10 @@ export class GameWorld {
     flash.position.copyFrom(end);
     flash.material = this.projectileMaterial;
     flash.isPickable = false;
+    // The collision point can already be inside a large enemy. Draw only the
+    // small, short-lived hit confirmation after world geometry so it cannot
+    // be entirely depth-occluded. Ordinary bullets keep their original order.
+    flash.renderingGroupId = 1;
     // This mesh has no velocity, damage, or collision entry. The actual bullet
     // is still disposed immediately by updateCombat, exactly once per hit.
     this.energyTraces.push({ mesh: flash, life: PROJECTILE_IMPACT_LIFE_SECONDS, maxLife: PROJECTILE_IMPACT_LIFE_SECONDS });
