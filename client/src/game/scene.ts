@@ -231,6 +231,9 @@ export async function createGameScene(engine: Engine, canvas: HTMLCanvasElement,
     const frameDelta = Number.isFinite(rawFrameDelta) ? Math.max(0, rawFrameDelta) : 0;
     const effectiveFrameDelta = discardNextFrameDelta ? 0 : frameDelta;
     discardNextFrameDelta = false;
+    // Age only effects from earlier rendered frames. New attacks created by
+    // the simulation catch-up below must reach this frame's actual rendering.
+    world.updatePresentation(effectiveFrameDelta);
     const timing = consumeSimulationDebt(simulationDebt, effectiveFrameDelta, world.isSimulationRunning());
     for (const step of splitSimulationDelta(timing.budget)) world.update(step);
     simulationDebt = timing.remainingDebt;
