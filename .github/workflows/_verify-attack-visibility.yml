@@ -7,7 +7,7 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -15,21 +15,30 @@ jobs:
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install isolated browser verifier
+        timeout-minutes: 2
         shell: bash
         run: |
-          npm install --prefix "$RUNNER_TEMP/visibility-browser" --no-audit --no-fund agent-browser
-          "$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser" install --with-deps
-          "$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser" --version
+          mkdir -p "$RUNNER_TEMP/visibility-evidence"
+          timeout 80s npm install --prefix "$RUNNER_TEMP/visibility-browser" --fetch-retries=0 --fetch-timeout=15000 --no-audit --no-fund agent-browser@0.33.2 2>&1 | tee "$RUNNER_TEMP/visibility-evidence/install.log"
+          ab="$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser"
+          "$ab" --version | tee "$RUNNER_TEMP/visibility-evidence/browser-version.txt"
+          chrome=$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)
+          if [ -n "$chrome" ]; then
+            echo "AGENT_BROWSER_EXECUTABLE_PATH=$chrome" >> "$GITHUB_ENV"
+            "$chrome" --version | tee -a "$RUNNER_TEMP/visibility-evidence/browser-version.txt"
+          else
+            timeout 30s "$ab" install
+          fi
       - name: Verify home screen and real WebGL attack pixels
+        timeout-minutes: 3
         shell: bash
         env:
           AGENT_BROWSER_ARGS: --enable-unsafe-swiftshader
         run: |
-          mkdir -p "$RUNNER_TEMP/visibility-evidence"
           pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/visibility-evidence/vite.log" 2>&1 &
           server=$!
           ab="$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser"
