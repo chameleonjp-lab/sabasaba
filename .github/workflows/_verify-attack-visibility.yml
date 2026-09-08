@@ -1,0 +1,67 @@
+name: Verify attack visuals in Chromium
+on:
+  push:
+    branches: [validation/sabasaba-attack-visibility-20260909]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install isolated browser verifier
+        shell: bash
+        run: |
+          npm install --prefix "$RUNNER_TEMP/visibility-browser" --no-audit --no-fund agent-browser
+          "$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser" install --with-deps
+          "$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser" --version
+      - name: Verify home screen and real WebGL attack pixels
+        shell: bash
+        env:
+          AGENT_BROWSER_ARGS: --enable-unsafe-swiftshader
+        run: |
+          mkdir -p "$RUNNER_TEMP/visibility-evidence"
+          pnpm exec vite --host 127.0.0.1 --port 4173 --strictPort > "$RUNNER_TEMP/visibility-evidence/vite.log" 2>&1 &
+          server=$!
+          ab="$RUNNER_TEMP/visibility-browser/node_modules/.bin/agent-browser"
+          trap '"$ab" close || true; kill "$server" || true' EXIT
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4173/sabasaba/ > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" -eq 1
+          "$ab" open http://127.0.0.1:4173/sabasaba/
+          "$ab" wait --load networkidle
+          "$ab" snapshot -i | tee "$RUNNER_TEMP/visibility-evidence/home-snapshot.txt"
+          "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/home.png"
+          "$ab" eval '(() => { if (!document.body.innerText.includes("サバサバ") || document.querySelector("vite-error-overlay")) throw new Error("Home screen is not ready"); return "Home screen rendered"; })()'
+          for size in '390 844' '844 390' '1280 720'; do
+            read -r width height <<< "$size"
+            "$ab" set viewport "$width" "$height"
+            for mode in normal endless; do
+              for scenario in rail thermal; do
+                name="$mode-$scenario-$width-$height"
+                "$ab" open "http://127.0.0.1:4173/sabasaba/attack-visibility-check.html?mode=$mode&case=$scenario"
+                "$ab" wait --load networkidle
+                "$ab" eval '(async () => { for (let attempt=0; attempt<100; attempt++) { const result=window.__visibilityResult; if (result) { if (!result.success) throw new Error(JSON.stringify(result)); return JSON.stringify(result); } await new Promise(resolve => setTimeout(resolve,100)); } throw new Error("Rendering verification timed out"); })()' | tee "$RUNNER_TEMP/visibility-evidence/$name.json"
+                "$ab" screenshot "$RUNNER_TEMP/visibility-evidence/$name.png"
+              done
+            done
+          done
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attack-visibility-browser-evidence
+          path: ${{ runner.temp }}/visibility-evidence/
+          retention-days: 7
