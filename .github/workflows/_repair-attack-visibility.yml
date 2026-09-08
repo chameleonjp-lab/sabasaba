@@ -1,0 +1,78 @@
+name: Prepare attack visibility fix
+on:
+  push:
+    branches: [automation/sabasaba-attack-visibility-20260909]
+permissions:
+  contents: write
+concurrency:
+  group: prepare-sabasaba-attack-visibility
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      BASE_SHA: 1b3b5e9d6a1003567bdf5ee96d62d687e314aea7
+      TARGET_BRANCH: fix/sabasaba-attack-visibility-20260909
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Existing baseline checks
+        run: pnpm run check && pnpm run test:rules
+      - name: Reproduce the missing effects in the original GameWorld
+        shell: bash
+        run: |
+          set +e
+          pnpm exec vitest run client/src/game/GameWorld.presentation.test.ts --reporter=json --outputFile="$RUNNER_TEMP/visibility-before.json"
+          result=$?
+          set -e
+          test "$result" -eq 1
+          node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/visibility-before.json","utf8")); if(!(r.numFailedTests>0)) throw Error("Expected a reproduced regression"); console.log("Original implementation failed",r.numFailedTests,"of",r.numTotalTests,"presentation checks");'
+      - name: Apply isolated presentation fix
+        run: node scripts/_apply-attack-visibility-fix.mjs
+      - name: Verify the complete patched implementation
+        run: |
+          pnpm run check
+          pnpm run test:rules
+          pnpm run build
+          git diff --check
+      - name: Record changes and publish only the isolated fix branch
+        shell: bash
+        run: |
+          git config user.name 'chatgpt-code-review'
+          git config user.email 'chatgpt-code-review@users.noreply.github.com'
+          git rm .github/workflows/_repair-attack-visibility.yml scripts/_apply-attack-visibility-fix.mjs
+          git add client/src/game/GameWorld.ts client/src/game/scene.ts client/src/game/GameWorld.presentation.test.ts package.json docs/ATTACK_VISIBILITY_FIX.md
+          tree=$(git write-tree)
+          git diff --name-only "$BASE_SHA" "$tree" > "$RUNNER_TEMP/visibility-files.txt"
+          node --input-type=module -e 'import fs from "node:fs"; const actual=fs.readFileSync(process.env.RUNNER_TEMP+"/visibility-files.txt","utf8").trim().split("\n").sort(); const expected=["client/src/game/GameWorld.ts","client/src/game/scene.ts","client/src/game/GameWorld.presentation.test.ts","package.json","docs/ATTACK_VISIBILITY_FIX.md"].sort(); if(JSON.stringify(actual)!==JSON.stringify(expected)) throw Error("Unexpected files: "+actual);'
+          parent="$BASE_SHA"
+          if git show-ref --verify --quiet "refs/remotes/origin/$TARGET_BRANCH"; then
+            parent=$(git rev-parse "refs/remotes/origin/$TARGET_BRANCH")
+          fi
+          commit=$(printf '%s\n' 'fix: retain attack visuals without delaying combat' | git commit-tree "$tree" -p "$parent")
+          git update-ref "refs/heads/$TARGET_BRANCH" "$commit"
+          git push origin "refs/heads/$TARGET_BRANCH:refs/heads/$TARGET_BRANCH"
+          git diff "$BASE_SHA" "$commit" > "$RUNNER_TEMP/visibility-fix.patch"
+          printf 'Fix commit: %s\n' "$commit" | tee "$RUNNER_TEMP/visibility-commit.txt"
+          git archive --format=tar.gz "$commit" > "$RUNNER_TEMP/visibility-source.tar.gz"
+      - name: Upload investigation and verified source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attack-visibility-verification
+          path: |
+            ${{ runner.temp }}/visibility-before.json
+            ${{ runner.temp }}/visibility-fix.patch
+            ${{ runner.temp }}/visibility-commit.txt
+            ${{ runner.temp }}/visibility-source.tar.gz
+          retention-days: 7
