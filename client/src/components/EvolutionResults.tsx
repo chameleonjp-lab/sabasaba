@@ -1,5 +1,6 @@
 import type { AttackResultStat } from "@/game/types";
 import { SCORE_RULES } from "@/game/rules";
+import "./ResultLayout.css";
 
 const number = (value: number) => Math.floor(value).toLocaleString("ja-JP");
 
