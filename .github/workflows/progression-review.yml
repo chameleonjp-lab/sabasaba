@@ -9,13 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Collect tracked source for review
-        run: git archive --format=tar.gz HEAD -o source.tar.gz
-      - uses: actions/upload-artifact@v4
-        with:
-          name: progression-review-source
-          path: source.tar.gz
-          retention-days: 1
       - uses: pnpm/action-setup@v4
         with:
           run_install: false
@@ -27,3 +20,10 @@ jobs:
       - run: pnpm run check
       - run: pnpm run test:rules
       - run: pnpm run build
+      - name: Collect offline test workspace
+        run: tar -czf test-workspace.tar.gz node_modules dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: progression-test-workspace
+          path: test-workspace.tar.gz
+          retention-days: 1
