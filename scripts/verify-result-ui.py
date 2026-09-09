@@ -70,7 +70,7 @@ def verify(url, output):
         assert "スコア" in shared and "ノヴァ・ソーハロ" in shared and "?result" not in shared
         assert page.evaluate("window.testCopies.length") == 0
         # Cancelling the native sheet must not silently copy or re-open anything.
-        page.evaluate("navigator.share = async () => {throw new DOMException('cancelled', 'AbortError');}")
+        page.evaluate("() => { navigator.share = async () => {throw new DOMException('cancelled', 'AbortError');}; }")
         share.click(); page.wait_for_function("!document.querySelector('[data-testid=share-result]').disabled")
         assert page.evaluate("window.testCopies.length") == 0
         # Unsupported native sharing uses the same full result text in clipboard.
@@ -78,7 +78,7 @@ def verify(url, output):
         share.click(); page.wait_for_function("window.testCopies.length === 1")
         assert page.evaluate("window.testCopies[0]") == shared
         # No native sheet and no clipboard access: present selectable text instead.
-        page.evaluate("navigator.clipboard.writeText = async () => {throw new Error('denied');}")
+        page.evaluate("() => { navigator.clipboard.writeText = async () => {throw new Error('denied');}; }")
         share.click()
         manual = page.get_by_role("textbox", name="コピー用のシェア文")
         manual.wait_for(); assert manual.input_value() == shared
