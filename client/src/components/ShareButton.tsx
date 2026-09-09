@@ -26,6 +26,9 @@ const isShareCancelled = (error: unknown) => (
 
 export default function ShareButton({ title, text, label, testId, className = "" }: ShareButtonProps) {
   const [status, setStatus] = useState("");
+  const [pending, setPending] = useState(false);
+  const [manualText, setManualText] = useState("");
+  const sharingRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
 
   useEffect(() => () => {
@@ -38,7 +41,8 @@ export default function ShareButton({ title, text, label, testId, className = ""
     statusTimerRef.current = window.setTimeout(() => setStatus(""), 1800);
   };
 
-  const share = async () => {
+  const performShare = async () => {
+    setManualText("");
     const url = getShareUrl();
     const shareText = buildShareText(text, url);
     const shareData = { title, text: shareText };
@@ -60,15 +64,25 @@ export default function ShareButton({ title, text, label, testId, className = ""
       await navigator.clipboard.writeText(shareText);
       showStatus("シェア文をコピーしました。");
     } catch {
-      showStatus("シェアできませんでした。");
+      setManualText(shareText);
+      showStatus("下のシェア文を選択してコピーできます。");
     }
+  };
+
+  const share = async () => {
+    if (sharingRef.current) return;
+    sharingRef.current = true;
+    setPending(true);
+    try { await performShare(); }
+    finally { sharingRef.current = false; setPending(false); }
   };
 
   return (
     <div className={`share-action ${className}`.trim()}>
-      <button className="share-button" data-testid={testId} type="button" onClick={() => void share()}>
+      <button className="share-button" data-testid={testId} type="button" disabled={pending} onClick={() => void share()}>
         {label}
       </button>
+      {manualText && <textarea className="share-manual-text" aria-label="コピー用のシェア文" readOnly value={manualText} onFocus={(event) => event.currentTarget.select()} />}
       {status && <p className="share-status" role="status" aria-live="polite">{status}</p>}
     </div>
   );
