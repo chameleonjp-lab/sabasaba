@@ -1,0 +1,29 @@
+name: Progression review workspace
+on:
+  push:
+    branches: [fix/progression-enemies-evolution-results-20260909]
+permissions:
+  contents: read
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect tracked source for review
+        run: git archive --format=tar.gz HEAD -o source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: progression-review-source
+          path: source.tar.gz
+          retention-days: 1
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm run test:rules
+      - run: pnpm run build
