@@ -33,6 +33,7 @@ def verify(url, output):
                 retry, share = page.get_by_test_id("retry-run"), page.get_by_test_id("share-result")
                 retry.wait_for(timeout=30000)
                 page.wait_for_timeout(250)
+                page.screenshot(path=str(output / f"initial-{mode}-{width}x{height}.png"))
                 for button in [retry, share]:
                     box = button.bounding_box()
                     assert box and 0 <= box["y"] and box["y"] + box["height"] <= height, (mode, width, height, box)
@@ -60,7 +61,7 @@ def verify(url, output):
         share = page.get_by_test_id("share-result"); share.wait_for(timeout=30000)
         page.evaluate('''() => {
           window.testShares = []; window.testCopies = [];
-          Object.defineProperty(navigator, 'share', {configurable:true,value:async data => {window.testShares.push(data);}});
+          Object.defineProperty(navigator, 'share', {configurable:true,writable:true,value:async data => {window.testShares.push(data);}});
           Object.defineProperty(navigator, 'canShare', {configurable:true,value:() => true});
           Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async text => {window.testCopies.push(text);}}});
         }''')

@@ -16,9 +16,12 @@ export default function EvolutionNotice({ weapons, visible }: { weapons: Evoluti
       return;
     }
     setNames(added.map((id) => EVOLUTION_RECIPES.find((recipe) => recipe.id === id)!.name));
+  }, [signature]);
+  useEffect(() => {
+    if (!visible || names.length === 0) return;
     const timer = window.setTimeout(() => setNames([]), 3500);
     return () => window.clearTimeout(timer);
-  }, [signature]);
+  }, [visible, names]);
   if (!visible || names.length === 0) return null;
   return <div className="evolution-notice" role="status" aria-live="polite" data-testid="evolution-notice">
     <b>武器が進化！</b><strong>{names.join("・")}</strong><span>2つの武器が合体。攻撃枠が1つ空きました。</span>
