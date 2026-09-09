@@ -64,6 +64,19 @@ export const NORMAL_HARD_CAPS = {
 
 /** Player loadout limits. Rail occupies one of the attack slots. */
 export const ATTACK_SLOT_LIMIT = 6;
+/** Endless earns one additional attack slot every ten levels, with a finite rendering budget. */
+export const ENDLESS_ATTACK_SLOT_LIMIT = 14;
+export const ATTACK_SLOT_LEVEL_INTERVAL = 10;
+export function getAttackSlotLimit(mode: GameMode, level: number): number {
+  const normalized = Number.isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
+  return mode === "normal" ? ATTACK_SLOT_LIMIT
+    : Math.min(ENDLESS_ATTACK_SLOT_LIMIT, ATTACK_SLOT_LIMIT + Math.floor(normalized / ATTACK_SLOT_LEVEL_INTERVAL));
+}
+/** High-level variants must not keep their early-run HP when experience outpaces the clock. */
+export function getEndlessVariantHealthFloor(level: number): number {
+  const growth = Number.isFinite(level) ? Math.max(0, Math.min(MAX_PLAYER_LEVEL, Math.floor(level)) - 20) : 0;
+  return EARLY_SCOUT_MIN_HP + growth * 3 + Math.floor(growth * growth / 20);
+}
 export const UTILITY_SLOT_LIMIT = 4;
 
 /** Dodge behavior shared by simulation and presentation. */
@@ -154,6 +167,7 @@ export function retainLatestMilestoneCelebrations<T>(current: readonly T[], addi
 const PRIORITY_SOUND_CUES = new Set<string>([
   "boss",
   "level-up",
+  "evolution",
   "perfect",
   "dodge",
   "low-health",

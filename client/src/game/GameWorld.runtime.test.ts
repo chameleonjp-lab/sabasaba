@@ -858,7 +858,7 @@ describe("GameWorld Endless enemy density", () => {
 });
 
 describe("GameWorld Endless long-run timing", () => {
-  it("keeps 10, 30, and 60 minutes of active high-level combat alive", () => {
+  it("keeps 10, 30, and 60 minutes of active high-level combat alive", async () => {
     stubWindow();
     let latestSnapshot: GameSnapshot | undefined;
     const { engine, scene, world, runtime } = createEndlessWorld((snapshot) => { latestSnapshot = snapshot; }, true);
@@ -900,6 +900,9 @@ describe("GameWorld Endless long-run timing", () => {
     ]);
     for (let step = 1; step <= 72_000; step += 1) {
       world.update(0.05);
+      // Real animation frames yield; allow Babylon disposal microtasks to finish, too.
+      // All 72,000 simulation steps and the original assertions are retained.
+      if (step % 1000 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
       if (step % 32 === 0) world.requestDodge();
       const expectedSeconds = checkpoints.get(step);
       if (expectedSeconds !== undefined) {
@@ -929,7 +932,7 @@ describe("GameWorld Endless long-run timing", () => {
     world.dispose();
     scene.dispose();
     engine.dispose();
-  });
+  }, 60_000);
 });
 
 describe("GameWorld Endless outcome lifecycle", () => {

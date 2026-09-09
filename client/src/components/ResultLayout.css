@@ -1,0 +1,7 @@
+/* One scrolling ancestor keeps the result action row sticky in portrait and landscape.
+   A capped panel with visible overflow previously ended its sticky area before the report. */
+.result-modal-layer > .result-console {
+  max-height: none;
+  overflow: visible;
+  margin-block: 0;
+}

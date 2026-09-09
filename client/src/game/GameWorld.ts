@@ -14,7 +14,8 @@ import { GAME_ASSETS } from "./assets";
 import { ARENA_OBSTACLES, PLAYER_OBSTACLE_COLLISION_RADIUS } from "./arena";
 import { MODULE_UPGRADES, STANDARD_UPGRADES, UPGRADE_CATALOG, type AttackId, type AttackStatus, type BossRewardId, type EvolutionId, type GameDebugMetrics, type GameMode, type GameOutcome, type GamePhase, type GameSnapshot, type GameSoundCue, type ModuleId, type SoundEvent, type UpgradeId, type UpgradeOption } from "./types";
 import {
-  ATTACK_SLOT_LIMIT,
+  getAttackSlotLimit,
+  getEndlessVariantHealthFloor,
   COMBO_WINDOW_SECONDS,
   DODGE_COOLDOWN_SECONDS,
   DODGE_DISTANCE,
@@ -83,9 +84,9 @@ const HIGH_VARIANTS: Record<HighVariantId, HighVariantConfig> = {
 };
 type BossAction = "none" | "shockwave" | "charge" | "artillery" | "barrage";
 type StrikerAction = "none" | "windup" | "dash";
-type PlayerDamageSource = "idle-needle" | "contact" | "variant-pulse" | "striker-dash" | "bulwark-barrage" | "bulwark-shockwave" | "bulwark-artillery" | "bulwark-charge" | "bulwark-destruction";
+type PlayerDamageSource = "idle-needle" | "contact" | "variant-artillery" | "variant-pulse" | "striker-dash" | "bulwark-barrage" | "bulwark-shockwave" | "bulwark-artillery" | "bulwark-charge" | "bulwark-destruction";
 type PlayerDamageResult = "damaged" | "perfect" | "blocked";
-type Enemy = { mesh: AbstractMesh; kind: EnemyKind; hp: number; maxHp: number; speed: number; scale: number; contactDamage: number; xpValue: number; hitRadius: number; lastDamagedBy?: AttackId; highVariant?: HighVariantId; milestoneBoss?: boolean; missionBossStage?: 1 | 2 | 3; milestoneCrown?: AbstractMesh; variantTimer: number; variantBurst: number; variantTelegraphTimer: number; variantTelegraph?: AbstractMesh; variantAura?: AbstractMesh; healthFill?: AbstractMesh; hitFlash: number; orbitCooldown: number; cryoTime: number; corrosionTime: number; corrosionStacks: number; corrosionTick: number; corrosionMark?: AbstractMesh; enteringContainment: boolean; strikerAction: StrikerAction; strikerTimer: number; strikerCooldown: number; strikerVector: Vector3; strikerDashHit: boolean; strikerPerfectDodge: boolean; strikerMarker?: AbstractMesh; bossAction: BossAction; bossTimer: number; bossCooldown: number; bossTarget: Vector3; bossVector: Vector3; bossChargeHit: boolean; bossBursts: number; bossEnraged: boolean; bossMarker?: AbstractMesh; vulnerableTime: number; summonTimer: number; lastTargetedAt: number };
+type Enemy = { mesh: AbstractMesh; kind: EnemyKind; hp: number; maxHp: number; speed: number; scale: number; contactDamage: number; xpValue: number; hitRadius: number; lastDamagedBy?: AttackId; lastDamagedByEvolution?: EvolutionId; highVariant?: HighVariantId; milestoneBoss?: boolean; missionBossStage?: 1 | 2 | 3; milestoneCrown?: AbstractMesh; variantTimer: number; variantBurst: number; variantVector: Vector3; variantTarget: Vector3; variantSide: number; variantRetreat: number; variantTelegraphTimer: number; variantTelegraph?: AbstractMesh; variantAura?: AbstractMesh; healthFill?: AbstractMesh; hitFlash: number; orbitCooldown: number; cryoTime: number; corrosionTime: number; corrosionStacks: number; corrosionTick: number; corrosionMark?: AbstractMesh; enteringContainment: boolean; strikerAction: StrikerAction; strikerTimer: number; strikerCooldown: number; strikerVector: Vector3; strikerDashHit: boolean; strikerPerfectDodge: boolean; strikerMarker?: AbstractMesh; bossAction: BossAction; bossTimer: number; bossCooldown: number; bossTarget: Vector3; bossVector: Vector3; bossChargeHit: boolean; bossBursts: number; bossEnraged: boolean; bossMarker?: AbstractMesh; vulnerableTime: number; summonTimer: number; lastTargetedAt: number };
 type Projectile = { mesh: AbstractMesh; velocity: Vector3; damage: number; life: number; hitRadius: number; source: AttackId; trailStart?: Vector3 };
 type CombatStat = { damage: number; kills: number };
 type Gem = { mesh: AbstractMesh; value: number; magnetized: boolean };
@@ -128,8 +129,8 @@ const MAX_REROLLS_PER_RUN = 3;
 const BULWARK_DESTRUCTION_BLAST_RADIUS = 2.6;
 const MILESTONE_BOSS_HP_MULTIPLIER = 20;
 const MILESTONE_BOSS_SCALE_MULTIPLIER = 2;
-const MODULE_MILESTONE_START_LEVEL = 30;
-const MODULE_MILESTONE_INTERVAL = 7;
+const MODULE_MILESTONE_START_LEVEL = 5;
+const MODULE_MILESTONE_INTERVAL = 5;
 // These limits are deliberately above the normal steady-state counts. They are
 // emergency guards for long Endless runs or an unexpected timer/target regression.
 const MAX_GEM_MESHES = 100;
@@ -169,6 +170,7 @@ const DEATH_CAUSE_LABELS: Record<PlayerDamageSource, string> = {
   "idle-needle": "停止地点への落下攻撃",
   contact: "敵との接触",
   "variant-pulse": "高レベル敵の波動",
+  "variant-artillery": "高レベル敵の砲撃",
   "striker-dash": "突撃機の突進",
   "bulwark-barrage": "重装機の連続砲撃",
   "bulwark-shockwave": "重装機の衝撃波",
@@ -301,6 +303,7 @@ export class GameWorld {
   private debugProjectilesFired = 0;
   private debugProjectileCollisions = 0;
   private combatStats: Record<AttackId, CombatStat> = this.createCombatStats();
+  private evolutionCombatStats: Partial<Record<EvolutionId, CombatStat>> = {};
   private score = 0;
   private damageHits = 0;
   private damageTaken = 0;
@@ -799,6 +802,7 @@ export class GameWorld {
     this.milestoneBossLevels.clear();
     this.spawnedNormalBossStages.clear();
     this.evolvedWeapons.clear();
+    this.evolutionCombatStats = {};
     this.combatStats = this.createCombatStats();
     this.player.position.x = 0;
     this.player.position.z = 0;
@@ -1227,7 +1231,7 @@ export class GameWorld {
 
   private setupResultPreview() {
     const previewStats: Array<[AttackId, number, number]> = [
-      ["rail", 1248, 29], ["scatter", 816, 18], ["orbit", 462, 11], ["fan", 744, 17], ["skyfall", 653, 9], ["saw", 396, 12], ["thermal", 344, 6], ["corrosion", 188, 4],
+      ["rail", 1248, 29], ["scatter", 816, 18], ["orbit", 462, 11], ["fan", 744, 17], ["skyfall", 653, 9], ["saw", 396, 12], ["nova", 240, 4], ["thermal", 344, 6], ["corrosion", 188, 4],
     ];
     this.weaponTier = 3;
     this.hasScatter = true;
@@ -1236,7 +1240,10 @@ export class GameWorld {
     this.orbitTier = 2;
     this.moduleTiers.fan = 3;
     this.moduleTiers.skyfall = 2;
-    this.moduleTiers.saw = 2;
+    this.moduleTiers.saw = 3;
+    this.moduleTiers.nova = 3;
+    this.evolvedWeapons.add("nova-saw");
+    this.evolutionCombatStats["nova-saw"] = { damage: 420, kills: 10 };
     this.moduleTiers.thermal = 2;
     this.moduleTiers.corrosion = 2;
     for (const [id, damage, kills] of previewStats) this.combatStats[id] = { damage, kills };
@@ -1565,7 +1572,7 @@ export class GameWorld {
     const variantId = highVariant;
     const variant = variantId ? HIGH_VARIANTS[variantId] : undefined;
     const profile = variant && variantId
-      ? { hp: Math.ceil(baseHp * variant.hp), speed: baseSpeed * variant.speed, scale: variant.scale, contactDamage: variant.contactDamage, xpValue: Math.ceil(variant.xp * experienceMultiplier), material: this.getHighVariantMaterial(variantId), meshType: variant.meshType, meshSize: variant.meshSize }
+      ? { hp: Math.ceil(Math.max(baseHp, this.mode === "endless" ? getEndlessVariantHealthFloor(this.level) : 0) * variant.hp), speed: baseSpeed * variant.speed, scale: variant.scale, contactDamage: variant.contactDamage, xpValue: Math.ceil(variant.xp * experienceMultiplier), material: this.getHighVariantMaterial(variantId), meshType: variant.meshType, meshSize: variant.meshSize }
       : kind === "striker"
       ? { hp: Math.max(EARLY_STRIKER_MIN_HP, Math.ceil(baseHp * 0.7)), speed: baseSpeed * 1.65, scale: 0.72, contactDamage: 3, xpValue: Math.ceil(1 * experienceMultiplier), material: this.strikerMaterial, meshType: 0, meshSize: 0.92 }
       : kind === "bulwark"
@@ -1591,8 +1598,8 @@ export class GameWorld {
       variantAura.material = profile.material;
       this.addVariantSilhouette(body, variant!.trait, profile.material);
     }
-    const healthFill = kind === "bulwark" ? this.createBossHealthBar(body) : undefined;
-    this.enemies.push({ mesh: body, kind, hp: profile.hp, maxHp: profile.hp, speed: profile.speed, scale: profile.scale, contactDamage: profile.contactDamage, xpValue: profile.xpValue, hitRadius, highVariant, variantTimer: 0.8 + Math.random() * 0.75, variantBurst: 0, variantTelegraphTimer: 0, variantTelegraph: undefined, variantAura, healthFill, hitFlash: 0, orbitCooldown: 0, cryoTime: 0, corrosionTime: 0, corrosionStacks: 0, corrosionTick: 0, enteringContainment: true, strikerAction: "none", strikerTimer: 0, strikerCooldown: kind === "striker" ? 1.8 + Math.random() * 1.4 : 0, strikerVector: Vector3.Zero(), strikerDashHit: false, strikerPerfectDodge: false, bossAction: "none", bossTimer: 0, bossCooldown: kind === "bulwark" ? 2.6 + Math.random() * 1.1 : 0, bossTarget: Vector3.Zero(), bossVector: Vector3.Zero(), bossChargeHit: false, bossBursts: 0, bossEnraged: false, bossMarker: undefined, vulnerableTime: 0, summonTimer: Number.POSITIVE_INFINITY, lastTargetedAt: -1 });
+    const healthFill = kind === "bulwark" || variant ? this.createBossHealthBar(body) : undefined;
+    this.enemies.push({ mesh: body, kind, hp: profile.hp, maxHp: profile.hp, speed: profile.speed, scale: profile.scale, contactDamage: profile.contactDamage, xpValue: profile.xpValue, hitRadius, highVariant, variantTimer: 0.8 + Math.random() * 0.75, variantBurst: 0, variantVector: Vector3.Zero(), variantTarget: Vector3.Zero(), variantSide: Math.random() < 0.5 ? -1 : 1, variantRetreat: 0, variantTelegraphTimer: 0, variantTelegraph: undefined, variantAura, healthFill, hitFlash: 0, orbitCooldown: 0, cryoTime: 0, corrosionTime: 0, corrosionStacks: 0, corrosionTick: 0, enteringContainment: true, strikerAction: "none", strikerTimer: 0, strikerCooldown: kind === "striker" ? 1.8 + Math.random() * 1.4 : 0, strikerVector: Vector3.Zero(), strikerDashHit: false, strikerPerfectDodge: false, bossAction: "none", bossTimer: 0, bossCooldown: kind === "bulwark" ? 2.6 + Math.random() * 1.1 : 0, bossTarget: Vector3.Zero(), bossVector: Vector3.Zero(), bossChargeHit: false, bossBursts: 0, bossEnraged: false, bossMarker: undefined, vulnerableTime: 0, summonTimer: Number.POSITIVE_INFINITY, lastTargetedAt: -1 });
     this.createWallBreach(ingress.breach, profile.material);
   }
 
@@ -1765,6 +1772,16 @@ export class GameWorld {
     if (!stat || !Number.isFinite(damage) || damage <= 0) return;
     const currentDamage = Number.isFinite(stat.damage) ? Math.max(0, stat.damage) : 0;
     stat.damage = Math.min(MAX_TRACKED_COMBAT_DAMAGE, currentDamage + damage);
+    const evolution = this.getActiveEvolutionForSource(source);
+    if (evolution) {
+      const evolved = this.evolutionCombatStats[evolution];
+      if (evolved) evolved.damage = Math.min(MAX_TRACKED_COMBAT_DAMAGE, evolved.damage + damage);
+    }
+  }
+
+  private getActiveEvolutionForSource(source: AttackId) {
+    return EVOLUTION_RECIPES.find((recipe) => this.evolvedWeapons.has(recipe.id)
+      && recipe.modules.some((moduleId) => moduleId === source))?.id;
   }
 
   private getTargetingRadius() {
@@ -1810,14 +1827,40 @@ export class GameWorld {
   }
 
   private activateEvolution(id: EvolutionId) {
+    if (this.evolvedWeapons.has(id)) return;
     this.evolvedWeapons.add(id);
+    this.evolutionCombatStats[id] = { damage: 0, kills: 0 };
+    this.queueSound("evolution");
+    this.createEvolutionRing("evolution-awakening", this.player.position, 4.2, 1.2);
+    this.createEvolutionRing("evolution-awakening-outer", this.player.position, 6, 1.5);
+    const base = this.player.position.add(new Vector3(0, 0.9, 0));
+    for (let index = 0; index < 6; index += 1) {
+      const angle = index * Math.PI / 3;
+      this.createEnergyTrace(base, base.add(new Vector3(Math.cos(angle) * 3, 2, Math.sin(angle) * 3)), 0.08, this.magnetMaterial, 0.75);
+    }
     if (id === "mirage-pylon") {
       this.mirageDrones.forEach((drone) => drone.dispose());
       this.mirageDrones.length = 0;
       this.deployPylon();
+      this.pylons.forEach((pylon) => this.decorateEvolvedPylon(pylon.mesh));
     }
-    if (id === "nova-saw") this.ensureSawHalo();
+    if (id === "nova-saw") {
+      this.sawBlades.forEach((blade) => blade.dispose());
+      this.sawBlades.length = 0;
+      this.ensureSawHalo();
+    }
     if (id === "mine-decoy") this.deployDecoy();
+  }
+
+  private createEvolutionRing(name: string, position: Vector3, radius: number, life = 0.6) {
+    const wave = MeshBuilder.CreateTorus(name, { diameter: radius * 2, thickness: 0.09, tessellation: 32 }, this.scene);
+    wave.position.copyFrom(position);
+    wave.position.y = 0.22;
+    wave.material = this.magnetMaterial;
+    wave.isPickable = false;
+    wave.renderingGroupId = 1;
+    wave.visibility = 0.65;
+    this.shockwaves.push({ mesh: wave, life, maxLife: life, startScale: 0.22, endScale: 1 });
   }
 
   private hasEvolution(id: EvolutionId) {
@@ -2055,7 +2098,9 @@ export class GameWorld {
     if (this.hasEvolution("vector-laser")) {
       const start = this.player.position.add(new Vector3(0, 1.04, 0));
       const end = start.add(aim.scale(18));
-      this.createEnergyTrace(start, end, 0.28, this.magnetMaterial, 0.22);
+      this.createEnergyTrace(start, end, 0.5, this.magnetMaterial, 0.36);
+      this.createEnergyTrace(start, end, 0.16, this.projectileMaterial, 0.4);
+      this.createEvolutionRing("evolved-lance-muzzle", start, 1.2, 0.45);
       for (let index = this.enemies.length - 1; index >= 0; index -= 1) {
         const enemy = this.enemies[index];
         if (!this.isCombatTarget(enemy) || !this.isEnemyHitByTrace(enemy, start, end, 1.05)) continue;
@@ -2074,6 +2119,9 @@ export class GameWorld {
   private triggerNovaRing(tier: number) {
     this.queueAttackSound();
     const radius = 3 + tier * 1.25;
+    if (this.hasEvolution("nova-saw")) {
+      this.createEvolutionRing("evolved-nova-halo", this.player.position, radius, 0.65);
+    }
     const wave = MeshBuilder.CreateTorus("nova-ring", { diameter: 0.8, thickness: 0.1, tessellation: 32 }, this.scene);
     wave.position.copyFrom(this.player.position);
     wave.position.y = 0.18;
@@ -2099,7 +2147,7 @@ export class GameWorld {
     const evolved = this.hasEvolution("ricochet-chain");
     const shotCount = evolved ? 1 : tier;
     for (let count = 0; count < shotCount; count += 1) {
-      const orb = MeshBuilder.CreateSphere("rico-burst", { diameter: 0.24, segments: 6 }, this.scene);
+      const orb = MeshBuilder.CreateSphere("rico-burst", { diameter: evolved ? 0.55 : 0.24, segments: 8 }, this.scene);
       orb.position.copyFrom(this.player.position);
       orb.position.y = 1.12;
       orb.material = evolved ? this.magnetMaterial : this.gemMaterial;
@@ -2133,6 +2181,10 @@ export class GameWorld {
       shot.bounces -= 1;
       const next = shot.bounces > 0 ? this.findBounceTarget(hitPosition, shot.hitTargets) : undefined;
       if (!next) { shot.mesh.dispose(); this.ricochetShots.splice(index, 1); continue; }
+      if (this.hasEvolution("ricochet-chain")) {
+        this.createEnergyTrace(hitPosition.add(new Vector3(0, 0.6, 0)), next.mesh.position.add(new Vector3(0, 0.6, 0)), 0.14, this.magnetMaterial, 0.3);
+        this.createEvolutionRing("evolved-arc-impact", hitPosition, 0.9, 0.3);
+      }
       shot.target = next;
     }
   }
@@ -2156,6 +2208,16 @@ export class GameWorld {
     core.position.copyFrom(target.mesh.position);
     core.position.y = 0.8;
     core.material = this.magnetMaterial;
+    if (this.hasEvolution("gravity-mortar")) {
+      core.scaling.setAll(1.5);
+      for (let index = 0; index < 2; index += 1) {
+        const ring = MeshBuilder.CreateTorus("evolved-gravity-orbit", { diameter: 1.6 + index * 0.55, thickness: 0.06, tessellation: 24 }, this.scene);
+        ring.parent = core;
+        ring.rotation.x = index * Math.PI / 3;
+        ring.material = this.magnetMaterial;
+        ring.isPickable = false;
+      }
+    }
     this.gravityCores.push({ mesh: core, life: 2.3 + this.moduleTiers.gravity * 0.45, pulse: 0.15 });
   }
 
@@ -2184,6 +2246,8 @@ export class GameWorld {
       if (core.life > 0) continue;
       const evolved = this.hasEvolution("gravity-mortar");
       if (evolved) {
+        this.createEvolutionRing("evolved-singularity-collapse", core.mesh.position, radius, 0.75);
+        this.createEnergyTrace(core.mesh.position, core.mesh.position.add(new Vector3(0, 5, 0)), 0.5, this.magnetMaterial, 0.48);
         const impact = MeshBuilder.CreateTorus("singularity-mortar-impact", { diameter: 1.1, thickness: 0.14, tessellation: 30 }, this.scene);
         impact.position.copyFrom(core.mesh.position);
         impact.position.y = 0.2;
@@ -2213,6 +2277,14 @@ export class GameWorld {
     beacon.position.copyFrom(this.player.position);
     beacon.position.y = 0.62;
     beacon.material = this.recoveryMaterial;
+    if (this.hasEvolution("mine-decoy")) {
+      const crown = MeshBuilder.CreateTorus("evolved-beacon-crown", { diameter: 1.5, thickness: 0.12, tessellation: 24 }, this.scene);
+      crown.parent = beacon;
+      crown.position.y = 0.72;
+      crown.material = this.magnetMaterial;
+      crown.isPickable = false;
+      this.createEvolutionRing("evolved-beacon-deployment", beacon.position, 2, 0.6);
+    }
     this.decoys.push({ mesh: beacon, life: 6.6 + allowed * 2, pulse: 0.18 });
     if (this.hasEvolution("mine-decoy")) this.deployMine(beacon.position);
   }
@@ -2236,6 +2308,7 @@ export class GameWorld {
       }
       if (decoy.life > 0) continue;
       const radius = 3.8 + tier * 1.05;
+      if (this.hasEvolution("mine-decoy")) this.createEvolutionRing("evolved-beacon-detonation", decoy.mesh.position, radius, 0.8);
       for (let enemyIndex = this.enemies.length - 1; enemyIndex >= 0; enemyIndex -= 1) {
         const enemy = this.enemies[enemyIndex];
         if (!this.isCombatTarget(enemy) || Vector3.DistanceSquared(enemy.mesh.position, decoy.mesh.position) > radius * radius) continue;
@@ -2707,6 +2780,12 @@ export class GameWorld {
     while (this.sawBlades.length < this.moduleTiers.saw) {
       const blade = MeshBuilder.CreateBox("saw-halo", { width: 0.3, height: 0.14, depth: 1.28 }, this.scene);
       blade.material = this.recoveryMaterial;
+      if (this.hasEvolution("nova-saw")) {
+        const rim = MeshBuilder.CreateTorus("evolved-saw-rim", { diameter: 1.25, thickness: 0.1, tessellation: 12 }, this.scene);
+        rim.parent = blade;
+        rim.material = this.magnetMaterial;
+        rim.isPickable = false;
+      }
       this.sawBlades.push(blade);
     }
     while (this.sawBlades.length > this.moduleTiers.saw) this.sawBlades.pop()?.dispose();
@@ -3008,6 +3087,17 @@ export class GameWorld {
     this.mirageTimer = Math.max(0.44, 1.12 - this.moduleTiers.mirage * 0.18);
   }
 
+  private decorateEvolvedPylon(pylon: AbstractMesh) {
+    if (pylon.getChildMeshes().some((child) => child.name === "evolved-pylon-barrel")) return;
+    for (const side of [-1, 1]) {
+      const barrel = MeshBuilder.CreateBox("evolved-pylon-barrel", { width: 0.16, height: 0.18, depth: 1.05 }, this.scene);
+      barrel.parent = pylon;
+      barrel.position.set(side * 0.36, 0.45, 0.24);
+      barrel.material = this.magnetMaterial;
+      barrel.isPickable = false;
+    }
+  }
+
   private deployPylon() {
     const evolved = this.hasEvolution("mirage-pylon");
     const allowed = evolved ? Math.min(3, Math.max(this.moduleTiers.pylon, this.moduleTiers.mirage)) : this.moduleTiers.pylon;
@@ -3021,6 +3111,7 @@ export class GameWorld {
     pylon.position.copyFrom(this.player.position);
     pylon.position.y = 0.55;
     pylon.material = this.projectileMaterial;
+    if (evolved) this.decorateEvolvedPylon(pylon);
     const core = MeshBuilder.CreateSphere("pylon-core", { diameter: 0.26, segments: 8 }, this.scene);
     core.parent = pylon;
     core.position.set(0, 0.24, 0);
@@ -3069,7 +3160,7 @@ export class GameWorld {
       const direction = target.mesh.position.subtract(pylon.mesh.position);
       direction.y = 0;
       direction.normalize();
-      this.createEnergyTrace(pylon.mesh.position.add(new Vector3(0, 0.72, 0)), target.mesh.position, 0.035 + this.moduleTiers.pylon * 0.008, this.magnetMaterial, 0.1);
+      this.createEnergyTrace(pylon.mesh.position.add(new Vector3(0, 0.72, 0)), target.mesh.position, evolved ? 0.16 : 0.035 + this.moduleTiers.pylon * 0.008, this.magnetMaterial, evolved ? 0.25 : 0.1);
       this.spawnBoltFrom(pylon.mesh.position, direction, evolved ? 24 : 19, 9 + this.moduleTiers.pylon * 6 + (evolved ? this.moduleTiers.mirage * 7 : 0), evolved ? 0.23 : 0.18, "pylon");
       pylon.cooldown = evolved ? 0.38 : Math.max(0.45, 1.12 - this.moduleTiers.pylon * 0.16);
     }
@@ -3239,11 +3330,13 @@ export class GameWorld {
     if (this.debugMode) this.debugHits = Math.min(MAX_TRACKED_KILLS, this.debugHits + 1);
     const boost = this.dodgeBoostSeconds > 0 ? 1.15 : 1;
     const vulnerability = enemy.vulnerableTime > 0 ? 1.35 : 1;
-    const amplifiedDamage = damage * this.attackAmplifier * boost * vulnerability;
+    const armor = enemy.highVariant && HIGH_VARIANTS[enemy.highVariant].trait === "armor" && enemy.variantBurst > 0 ? 0.35 : 1;
+    const amplifiedDamage = damage * this.attackAmplifier * boost * vulnerability * armor;
     const actualDamage = Math.max(0, Math.min(enemy.hp, amplifiedDamage));
     const bossHealthStepBefore = enemy.milestoneBoss ? Math.floor((1 - enemy.hp / Math.max(1, enemy.maxHp)) * 10) : 0;
     this.recordDamage(source, actualDamage);
     enemy.lastDamagedBy = source;
+    enemy.lastDamagedByEvolution = this.getActiveEvolutionForSource(source);
     enemy.hp -= amplifiedDamage;
     if (enemy.milestoneBoss) {
       const bossHealthStepAfter = Math.min(10, Math.floor((1 - Math.max(0, enemy.hp) / Math.max(1, enemy.maxHp)) * 10));
@@ -3453,8 +3546,9 @@ export class GameWorld {
         }
       }
       const variantSpeedMultiplier = this.updateHighVariantAction(enemy, !decoy, delta);
+      if (!this.isSimulationActive()) return;
       const objective = decoy ? decoy.mesh.position : this.player.position;
-      const direction = objective.subtract(enemy.mesh.position);
+      const direction = this.getVariantMoveDirection(enemy, objective, Boolean(decoy));
       direction.y = 0;
       const distance = direction.length();
       if (distance > 0.1) {
@@ -3497,50 +3591,104 @@ export class GameWorld {
     enemy.vulnerableTime = Math.max(enemy.vulnerableTime, enemy.bossEnraged ? 1.25 : 1.65);
   }
 
+  /** Movement families share collision checks, not the same homing behavior. */
+  private getVariantMoveDirection(enemy: Enemy, objective: Vector3, distracted: boolean) {
+    const toward = objective.subtract(enemy.mesh.position);
+    toward.y = 0;
+    if (!enemy.highVariant || distracted) return toward;
+    const trait = HIGH_VARIANTS[enemy.highVariant].trait;
+    const distance = toward.length();
+    if (distance < 0.01) return toward;
+    toward.scaleInPlace(1 / distance);
+    const tangent = new Vector3(-toward.z * enemy.variantSide, 0, toward.x * enemy.variantSide);
+    if ((trait === "surge" || trait === "skirmish") && enemy.variantBurst > 0) return enemy.variantVector.clone();
+    if (trait === "drift") return toward.scale(distance > 7 ? 0.55 : 0.15).add(tangent);
+    if (trait === "swarm" && distance > 3) return toward.add(tangent.scale(0.85));
+    if (trait === "siege") return distance < 6 ? toward.scale(-1) : distance > 10 ? toward : Vector3.Zero();
+    if (trait === "skirmish") {
+      if (enemy.variantRetreat > 0 || distance < 4) return toward.scale(-1).add(tangent.scale(0.35));
+      if (distance < 8) return tangent;
+    }
+    return toward;
+  }
+
   private updateHighVariantAction(enemy: Enemy, canThreatenPlayer: boolean, delta: number) {
     if (!enemy.highVariant) return 1;
     const config = HIGH_VARIANTS[enemy.highVariant];
+    const trait = config.trait;
+    const wasBursting = enemy.variantBurst > 0;
     enemy.variantTimer -= delta;
     enemy.variantBurst = Math.max(0, enemy.variantBurst - delta);
+    enemy.variantRetreat = Math.max(0, enemy.variantRetreat - delta);
+    if (trait === "skirmish" && wasBursting && enemy.variantBurst === 0) enemy.variantRetreat = 2;
     if (enemy.variantAura) {
       enemy.variantAura.rotation.y += delta * (3.4 + enemy.scale * 1.6);
-      enemy.variantAura.scaling.setAll(0.9 + Math.sin(this.elapsed * (5 + enemy.scale) + enemy.scale) * 0.1);
+      enemy.variantAura.scaling.setAll(trait === "armor" && enemy.variantBurst > 0 ? 1.6 : 0.9 + Math.sin(this.elapsed * 5) * 0.1);
     }
-    if (config.trait === "drift") enemy.mesh.position.y = 0.8 + Math.sin(this.elapsed * 4.2 + enemy.scale * 3) * 0.18;
+    if (trait === "drift") enemy.mesh.position.y = 0.8 + Math.sin(this.elapsed * 4.2 + enemy.scale * 3) * 0.18;
+    // A redirected enemy cancels its old player-targeted warning and charge.
+    if (!canThreatenPlayer) {
+      enemy.variantTelegraph?.dispose();
+      enemy.variantTelegraph = undefined;
+      enemy.variantTelegraphTimer = 0;
+      enemy.variantBurst = 0;
+      enemy.variantTimer = Math.max(enemy.variantTimer, 0.8);
+      return 1;
+    }
+    if (trait === "drift" || trait === "swarm") return trait === "swarm" ? 1.15 : 0.9;
     let resolvingTelegraph = false;
     if (enemy.variantTelegraphTimer > 0) {
-      enemy.variantTelegraphTimer -= delta;
-      if (enemy.variantTelegraph) {
-        enemy.variantTelegraph.position.copyFrom(enemy.mesh.position);
-        enemy.variantTelegraph.position.y = 0.14;
-        enemy.variantTelegraph.rotation.y = enemy.mesh.rotation.y;
-      }
-      enemy.variantTelegraph?.scaling.setAll(0.82 + Math.sin(this.elapsed * 22) * 0.16);
-      if (enemy.variantTelegraphTimer > 0) return 1;
+      enemy.variantTelegraphTimer = Math.max(0, enemy.variantTelegraphTimer - delta);
+      // Targets and charge directions stay locked after the warning appears.
+      if (enemy.variantTelegraph) enemy.variantTelegraph.visibility = 0.7 + Math.sin(this.elapsed * 18) * 0.15;
+      if (enemy.variantTelegraphTimer > 0) return 0;
       enemy.variantTelegraph?.dispose();
       enemy.variantTelegraph = undefined;
       resolvingTelegraph = true;
     }
-    if (!resolvingTelegraph && enemy.variantTimer > 0) return config.trait === "surge" && enemy.variantBurst > 0 ? 2.1 : config.trait === "skirmish" && enemy.variantBurst > 0 ? 1.65 : config.trait === "swarm" ? 1.24 : 1;
-    if (!resolvingTelegraph) {
-      enemy.variantTimer = config.trait === "pulse" ? 1.35 : config.trait === "siege" ? 1.75 : config.trait === "armor" ? 2.25 : 1.25 + Math.random() * 0.75;
-      enemy.variantTelegraphTimer = VARIANT_TELEGRAPH_SECONDS;
-      const diameter = config.trait === "pulse" ? (3.2 + enemy.scale * 1.1) * 2 : config.trait === "surge" || config.trait === "skirmish" ? 2.25 + enemy.scale : 2.7;
-      enemy.variantTelegraph = this.createVariantTelegraph(enemy, diameter, config.trait);
+    if (!resolvingTelegraph && enemy.variantTimer > 0) {
+      if (enemy.variantBurst > 0) return trait === "armor" ? 0 : trait === "surge" ? 3.2 : 2.6;
       return 1;
     }
-    if (config.trait === "surge" || config.trait === "skirmish") {
-      enemy.variantBurst = config.trait === "surge" ? 0.46 : 0.68;
-      return config.trait === "surge" ? 2.1 : 1.65;
+    if (!resolvingTelegraph) {
+      enemy.variantTimer = trait === "pulse" ? 2.4 : trait === "siege" ? 4.2 : trait === "armor" ? 5.2 : 3.5;
+      enemy.variantTelegraphTimer = trait === "siege" ? 1 : VARIANT_TELEGRAPH_SECONDS;
+      enemy.variantTarget.copyFrom(this.player.position);
+      enemy.variantTarget.y = 0.14;
+      enemy.variantVector.copyFrom(this.player.position.subtract(enemy.mesh.position));
+      enemy.variantVector.y = 0;
+      if (enemy.variantVector.lengthSquared() < 0.001) enemy.variantVector.set(0, 0, 1);
+      enemy.variantVector.normalize();
+      const chargeLength = enemy.speed * (trait === "surge" ? 3.2 * 0.6 : 2.6 * 0.45);
+      const diameter = trait === "pulse" ? (3.2 + enemy.scale * 1.1) * 2 : trait === "siege" ? 4.7 : trait === "armor" ? 2.7 : chargeLength;
+      enemy.variantTelegraph = this.createVariantTelegraph(enemy, diameter, trait);
+      if (trait === "siege") enemy.variantTelegraph.position.copyFrom(enemy.variantTarget);
+      if (trait === "surge" || trait === "skirmish") {
+        enemy.variantTelegraph.position.addInPlace(enemy.variantVector.scale(chargeLength / 2));
+        enemy.variantTelegraph.rotation.y = Math.atan2(enemy.variantVector.x, enemy.variantVector.z);
+      }
+      return 0;
     }
-    if (config.trait === "pulse") {
+    if (trait === "surge" || trait === "skirmish") {
+      enemy.variantBurst = trait === "surge" ? 0.6 : 0.45;
+      return trait === "surge" ? 3.2 : 2.6;
+    }
+    if (trait === "armor") {
+      enemy.variantBurst = 2;
+      return 0;
+    }
+    if (trait === "pulse") {
       const radius = 3.2 + enemy.scale * 1.1;
       this.emitVariantPulse(enemy, radius, config.contactDamage);
-      if (canThreatenPlayer && this.playerRingTouchesPoint(enemy.mesh.position, radius) && this.damageTimer <= 0) this.damagePlayer(Math.min(10, config.contactDamage), 0.58, "variant-pulse");
-    } else if (config.trait === "siege" || config.trait === "armor") {
-      this.emitVariantPulse(enemy, config.trait === "siege" ? 2.35 : 1.7, 0);
+      if (this.playerRingTouchesPoint(enemy.mesh.position, radius) && this.damageTimer <= 0) this.damagePlayer(Math.min(10, config.contactDamage), 0.58, "variant-pulse");
+    } else if (trait === "siege") {
+      const impact = MeshBuilder.CreateTorus("variant-artillery-impact", { diameter: 4.7, thickness: 0.13, tessellation: 28 }, this.scene);
+      impact.position.copyFrom(enemy.variantTarget);
+      impact.material = this.hazardGroundMaterial;
+      this.shockwaves.push({ mesh: impact, life: 0.4, maxLife: 0.4, startScale: 1, endScale: 1 });
+      if (this.playerRingTouchesPoint(enemy.variantTarget, 2.35) && this.damageTimer <= 0) this.damagePlayer(Math.min(10, config.contactDamage), 0.58, "variant-artillery");
     }
-    return config.trait === "swarm" ? 1.24 : 1;
+    return 0;
   }
 
   private emitVariantPulse(enemy: Enemy, radius: number, damage: number) {
@@ -3557,7 +3705,7 @@ export class GameWorld {
     this.queueSound("warning");
     const isLine = trait === "surge" || trait === "skirmish" || trait === "drift";
     const marker = isLine
-      ? MeshBuilder.CreateBox("variant-warning-line", { width: 0.14, height: 0.045, depth: Math.max(0.6, diameter) }, this.scene)
+      ? MeshBuilder.CreateBox("variant-warning-line", { width: this.getEnemyHitRadius(enemy) * 2, height: 0.045, depth: Math.max(0.6, diameter) }, this.scene)
       : trait === "siege" || trait === "armor"
         ? MeshBuilder.CreateCylinder("variant-warning-ground", { height: 0.035, diameter: Math.max(0.2, diameter), tessellation: 6 }, this.scene)
         : MeshBuilder.CreateTorus("variant-warning-ring", { diameter: Math.max(0.2, diameter), thickness: 0.095, tessellation: 28 }, this.scene);
@@ -3865,9 +4013,16 @@ export class GameWorld {
       }
     }
 
-    if (enemy.highVariant && HIGH_VARIANTS[enemy.highVariant].trait === "pulse" && enemy.variantTelegraphTimer > 0 && enemy.variantTelegraphTimer <= DODGE_PERFECT_WINDOW_SECONDS) {
-      const pulseRadius = 3.2 + enemy.scale * 1.1;
-      if (this.ringTouchesPointAt(origin, enemy.mesh.position, pulseRadius)) return true;
+    if (enemy.highVariant) {
+      const trait = HIGH_VARIANTS[enemy.highVariant].trait;
+      const imminent = enemy.variantTelegraphTimer > 0 && enemy.variantTelegraphTimer <= DODGE_PERFECT_WINDOW_SECONDS;
+      if (trait === "pulse" && imminent && this.ringTouchesPointAt(origin, enemy.mesh.position, 3.2 + enemy.scale * 1.1)) return true;
+      if (trait === "siege" && imminent && this.ringTouchesPointAt(origin, enemy.variantTarget, 2.35)) return true;
+      if ((trait === "surge" || trait === "skirmish") && (imminent || enemy.variantBurst > 0)) {
+        const duration = enemy.variantBurst > 0 ? enemy.variantBurst : trait === "surge" ? 0.6 : 0.45;
+        const end = enemy.mesh.position.add(enemy.variantVector.scale(enemy.speed * (trait === "surge" ? 3.2 : 2.6) * duration));
+        if (this.distanceToSegmentSquared(origin, enemy.mesh.position, end) <= contactRadius * contactRadius) return true;
+      }
     }
     return false;
   }
@@ -3968,6 +4123,8 @@ export class GameWorld {
     this.comboTimer = COMBO_WINDOW_SECONDS;
     this.maxCombo = Math.min(MAX_TRACKED_COMBO, Math.max(this.maxCombo, this.combo));
     if (enemy.lastDamagedBy) this.combatStats[enemy.lastDamagedBy].kills = Math.min(MAX_TRACKED_KILLS, this.combatStats[enemy.lastDamagedBy].kills + 1);
+    const evolvedStat = enemy.lastDamagedByEvolution ? this.evolutionCombatStats[enemy.lastDamagedByEvolution] : undefined;
+    if (evolvedStat) evolvedStat.kills = Math.min(MAX_TRACKED_KILLS, evolvedStat.kills + 1);
     if (this.debugMode) this.debugKills = Math.min(MAX_TRACKED_KILLS, this.debugKills + 1);
     if (enemy.kind === "bulwark" && !milestoneBoss) {
       const blastRadius = BULWARK_DESTRUCTION_BLAST_RADIUS;
@@ -4270,7 +4427,14 @@ export class GameWorld {
         const stat = evolution
           ? evolution.modules.reduce((total, moduleId) => ({ damage: total.damage + this.combatStats[moduleId].damage, kills: total.kills + this.combatStats[moduleId].kills }), { damage: 0, kills: 0 })
           : this.combatStats[attack.id];
-        return { ...attack, ...stat };
+        const evolved = evolution ? this.evolutionCombatStats[evolution.id] : undefined;
+        return {
+          ...attack, ...stat,
+          evolutionId: evolution?.id,
+          evolvedDamage: evolution ? evolved?.damage ?? 0 : undefined,
+          evolvedKills: evolution ? evolved?.kills ?? 0 : undefined,
+          sourceLabels: evolution?.modules.map((id) => MODULE_UPGRADES.find((option) => option.id === id)!.title),
+        };
       })
       .sort((left, right) => right.damage - left.damage || right.kills - left.kills);
     const totalDamage = Object.values(this.combatStats).reduce((total, stat) => total + stat.damage, 0);
@@ -4358,18 +4522,37 @@ export class GameWorld {
   }
 
   private prepareUpgradeChoices(excludedIds = new Set<UpgradeId>()) {
-    this.moduleSelection = this.level >= 10;
+    this.moduleSelection = this.level >= 3;
     if (this.isModuleMilestone()) {
       this.upgradeOptions = this.pickModuleMilestoneOptions(excludedIds);
       return;
     }
     const pool = this.getUpgradeCandidatePool();
     const freshPool = pool.filter((option) => !excludedIds.has(option.id));
-    this.upgradeOptions = this.pickWeightedOptions(freshPool.length >= 3 ? freshPool : pool, 3);
+    const candidates = freshPool.length >= 3 ? freshPool : pool;
+    // A free slot must produce a real acquisition choice, not just a low random chance.
+    const freshNewWeapons = candidates.filter((option) => this.isNewAttackUpgrade(option));
+    const newWeapons = freshNewWeapons.length > 0 ? freshNewWeapons : pool.filter((option) => this.isNewAttackUpgrade(option));
+    const selected = this.pickWeightedOptions(newWeapons, 1);
+    // Also keep a path toward an owned pair's next level instead of crowding it out.
+    const recipeSteps = candidates.filter((option) => !selected.includes(option)
+      && this.isModuleId(option.id) && this.moduleTiers[option.id] > 0
+      && EVOLUTION_RECIPES.some((recipe) => !this.evolvedWeapons.has(recipe.id)
+        && recipe.modules.includes(option.id as ModuleId)
+        && recipe.modules.every((id) => this.moduleTiers[id] > 0)));
+    selected.push(...this.pickWeightedOptions(recipeSteps, 1));
+    selected.push(...this.pickWeightedOptions(candidates.filter((option) => !selected.includes(option)), 3 - selected.length));
+    this.upgradeOptions = selected;
+  }
+
+  private isNewAttackUpgrade(option: UpgradeOption) {
+    return (option.id === "scatter" && !this.hasScatter)
+      || (option.id === "orbit" && !this.hasOrbit)
+      || (this.isModuleId(option.id) && this.isWeaponModule(option.id) && this.moduleTiers[option.id] === 0);
   }
 
   private getUpgradeCandidatePool() {
-    const catalog = this.level >= 10 ? UPGRADE_CATALOG : STANDARD_UPGRADES;
+    const catalog = this.level >= 3 ? UPGRADE_CATALOG : STANDARD_UPGRADES;
     const candidates = catalog.filter((option) => this.canOfferUpgrade(option));
     if (candidates.length >= 3) return candidates;
     // Keep three repeatable choices without reintroducing durability in Normal.
@@ -4464,7 +4647,7 @@ export class GameWorld {
   }
 
   private getWeaponLimit() {
-    return ATTACK_SLOT_LIMIT;
+    return getAttackSlotLimit(this.mode, this.level);
   }
 
   private isModuleMilestone() {

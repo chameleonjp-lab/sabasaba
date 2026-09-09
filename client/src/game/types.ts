@@ -15,6 +15,7 @@ export type GameSoundCue =
   | "kill-bulwark"
   | "xp"
   | "level-up"
+  | "evolution"
   | "warning"
   | "perfect"
   | "dodge"
@@ -53,6 +54,11 @@ export interface AttackStatus {
 }
 
 export interface AttackResultStat {
+  /** Combined lifetime totals remain in damage/kills; these fields count hits after evolution. */
+  evolutionId?: EvolutionId;
+  evolvedDamage?: number;
+  evolvedKills?: number;
+  sourceLabels?: string[];
   id: AttackId;
   label: string;
   iconId: IconId;
