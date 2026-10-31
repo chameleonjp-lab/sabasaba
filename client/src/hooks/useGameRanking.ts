@@ -8,7 +8,7 @@ const START_RUN_RPC = "start_sabasaba_run";
 const SUBMIT_RUN_RPC = "submit_sabasaba_run";
 const BEST_RANKING_RPC = "get_best_score_ranking";
 const REQUEST_TIMEOUT_MS = 8_000;
-export const RANKING_LIMIT = 10;
+export const RANKING_LIMIT = 30;
 const CLIENT_VERSION = "sabasaba-web-2.0.0-verified-ranking";
 const PENDING_STORAGE_KEY = "sabasaba-ranking-pending-v2";
 

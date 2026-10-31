@@ -61,31 +61,26 @@ def verify(url, output):
         share = page.get_by_test_id("share-result"); share.wait_for(timeout=30000)
         page.evaluate('''() => {
           window.testShares = []; window.testCopies = [];
-          Object.defineProperty(navigator, 'share', {configurable:true,writable:true,value:async data => {window.testShares.push(data);}});
-          Object.defineProperty(navigator, 'canShare', {configurable:true,value:() => true});
+          window.open = value => {const url=new URL(value); if(url.origin!=="https://x.com" || url.pathname!=="/intent/post") throw new Error("Unexpected share URL");window.testShares.push(url.searchParams.get("text"));return {opener:null};};
           Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async text => {window.testCopies.push(text);}}});
         }''')
         share.click(); page.wait_for_function("window.testShares.length === 1")
-        shared = page.evaluate("window.testShares[0].text")
+        shared = page.evaluate("window.testShares[0]")
         assert "スコア" in shared and "ノヴァ・ソーハロ" in shared and "?result" not in shared
         assert page.evaluate("window.testCopies.length") == 0
-        # Cancelling the native sheet must not silently copy or re-open anything.
-        page.evaluate("() => { navigator.share = async () => {throw new DOMException('cancelled', 'AbortError');}; }")
-        share.click(); page.wait_for_function("!document.querySelector('[data-testid=share-result]').disabled")
-        assert page.evaluate("window.testCopies.length") == 0
-        # Unsupported native sharing uses the same full result text in clipboard.
-        page.evaluate("navigator.share = undefined")
+        # A blocked popup copies the same full result text.
+        page.evaluate("window.open = () => null")
         share.click(); page.wait_for_function("window.testCopies.length === 1")
         assert page.evaluate("window.testCopies[0]") == shared
-        # No native sheet and no clipboard access: present selectable text instead.
+        # No popup and no clipboard access: present selectable text instead.
         page.evaluate("() => { navigator.clipboard.writeText = async () => {throw new Error('denied');}; }")
         share.click()
         manual = page.get_by_role("textbox", name="コピー用のシェア文")
         manual.wait_for(); assert manual.input_value() == shared
-        # A double click cannot create two native sheets while the first is open.
+        # A second click cannot duplicate a still-pending clipboard operation.
         page.evaluate('''() => {
           window.doubleShareCount=0;
-          navigator.share=() => {window.doubleShareCount++;return new Promise(resolve => {window.finishShare=resolve;});};
+          navigator.clipboard.writeText=() => {window.doubleShareCount++;return new Promise(resolve => {window.finishShare=resolve;});};
           const button=document.querySelector('[data-testid=share-result]');button.click();button.click();
         }''')
         assert page.evaluate("window.doubleShareCount") == 1
@@ -93,7 +88,7 @@ def verify(url, output):
         page.wait_for_function("!document.querySelector('[data-testid=share-result]').disabled")
         page.get_by_test_id("retry-run").click()
         page.get_by_test_id("retry-run").wait_for(state="hidden")
-        report.append({"share": "native, cancel, clipboard, manual fallback, duplicate guard", "replay": "pass"})
+        report.append({"share": "X intent, clipboard, manual fallback, duplicate guard", "replay": "pass"})
         context.close(); browser.close()
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))

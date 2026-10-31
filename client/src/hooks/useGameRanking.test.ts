@@ -7,7 +7,7 @@ describe("verified ranking contract", () => {
   });
 
   it("requests the top ten records when ranking is enabled", () => {
-    expect(RANKING_LIMIT).toBe(10);
+    expect(RANKING_LIMIT).toBe(30);
   });
 
   afterEach(() => vi.unstubAllGlobals());

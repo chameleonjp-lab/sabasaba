@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildShareText } from "./ShareButton";
+import { buildShareText, buildXIntent } from "./ShareButton";
 
 describe("ShareButton share text", () => {
   it("adds the game URL as a plain-text line", () => {
@@ -11,4 +11,11 @@ describe("ShareButton share text", () => {
     expect(buildShareText("ゲームをシェアします。  \n", "https://example.com/game/"))
       .toBe("ゲームをシェアします。\nhttps://example.com/game/");
   });
+});
+
+it('X intent keeps non-ASCII text, punctuation and newlines intact', () => {
+ const text = 'サバサバ & #\n123点';
+ const url = new URL(buildXIntent(text));
+ expect(url.origin).toBe('https://x.com');
+ expect(url.searchParams.get('text')).toBe(text);
 });

@@ -250,6 +250,8 @@ export default function GameCanvas() {
   const countdownActiveRef = useRef(false);
   const lifecyclePauseRequestedRef = useRef(false);
   const rankingRunIdRef = useRef(0);
+  const rankingNameRef = useRef("");
+  const rankingLoadRequestRef = useRef(0);
   const runLaunchRequestedRef = useRef(false);
   const rankingSubmissionKeyRef = useRef("");
   const rankingSessionRef = useRef<RankingRunSession | null>(null);
@@ -509,6 +511,8 @@ export default function GameCanvas() {
 
   const resetRankingState = useCallback(() => {
     rankingRunIdRef.current += 1;
+    rankingNameRef.current = "";
+    rankingLoadRequestRef.current += 1;
     rankingSubmissionKeyRef.current = "";
     rankingSessionRef.current = null;
     rankingStartPromiseRef.current = null;
@@ -519,7 +523,8 @@ export default function GameCanvas() {
   }, []);
 
   const beginRankingRun = useCallback((mode: GameMode, displayName: string) => {
-    if (previewAutostart || !ranking.enabled) return;
+    rankingNameRef.current = normalizeRankingName(displayName);
+    if (previewAutostart || !ranking.enabled || !rankingNameRef.current) return;
     const runId = rankingRunIdRef.current;
     const clientRunId = createClientRunId();
     setRankingMessage("ランキング用のプレイ記録を開始しています…");
@@ -547,17 +552,9 @@ export default function GameCanvas() {
   const startRun = (event?: FormEvent) => {
     event?.preventDefault();
     const trimmedName = playerName.trim();
-    if (!trimmedName && !previewAutostart) {
-      setNameError("プレイヤー名を入力してください");
-      window.requestAnimationFrame(() => {
-        nameInputRef.current?.focus();
-        nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-      return;
-    }
     if (runLaunchRequestedRef.current) return;
     runLaunchRequestedRef.current = true;
-    const safeName = trimmedName || "プレイヤー01";
+    const safeName = trimmedName;
     savePlayerName(safeName);
     setPlayerName(safeName);
     setNameError("");
@@ -639,6 +636,7 @@ export default function GameCanvas() {
   }, [resetJoystick]);
 
   const loadRanking = useCallback(async (mode: GameMode, runId: number) => {
+    const request = ++rankingLoadRequestRef.current;
     try {
       if (!ranking.enabled) {
         setRankingRows([]);
@@ -646,11 +644,11 @@ export default function GameCanvas() {
         return;
       }
       const rows = await ranking.fetchRanking(mode, RANKING_LIMIT);
-      if (rankingRunIdRef.current !== runId) return;
+      if (rankingRunIdRef.current !== runId || rankingLoadRequestRef.current !== request) return;
       setRankingRows(rows);
       setRankingLoadError("");
     } catch {
-      if (rankingRunIdRef.current !== runId) return;
+      if (rankingRunIdRef.current !== runId || rankingLoadRequestRef.current !== request) return;
       setRankingRows([]);
       setRankingLoadError("ランキングを読み込めませんでした。");
     }
@@ -666,16 +664,19 @@ export default function GameCanvas() {
       void loadRanking(mode, runId);
       return;
     }
-    const displayName = normalizeRankingName(playerName);
+    const displayName = rankingNameRef.current;
     if (!displayName) {
-      setRankingStatus("failed");
-      setRankingMessage("名前を確認できなかったため、ランキングへ送信できませんでした。");
+      setRankingStatus("idle");
+      setRankingMessage("名前なしのため公開登録しません。ランキングは閲覧できます。");
+      void loadRanking(mode, runId);
       return;
     }
     const session = rankingSessionRef.current ?? await rankingStartPromiseRef.current;
-    if (!session || rankingRunIdRef.current !== runId) {
+    if (rankingRunIdRef.current !== runId) return;
+    if (!session) {
       setRankingStatus("failed");
       setRankingMessage("サーバー発行のプレイ識別番号がないため送信できません。端末の最高得点は保存されています。");
+      void loadRanking(mode, runId);
       return;
     }
     const submissionKey = `${session.playToken}:${resultSnapshot.score}:${resultSnapshot.seconds}`;
@@ -1110,8 +1111,8 @@ export default function GameCanvas() {
   const resultOutcome = outcomeLabel(snapshotView.outcome);
   const isGameover = runStarted && snapshot.phase === "gameover";
   const rankingVisible = isGameover && (!previewAutostart || resultPreview);
-  const rankingCurrentName = normalizeRankingName(playerName);
-  const rankingActionVisible = rankingVisible && canSubmitRankingResult(currentMode, snapshotView.outcome, previewAutostart, ranking.enabled);
+  const rankingCurrentName = rankingNameRef.current;
+  const rankingActionVisible = rankingVisible && Boolean(rankingCurrentName) && canSubmitRankingResult(currentMode, snapshotView.outcome, previewAutostart, ranking.enabled);
   const isBossReward = runStarted && snapshot.phase === "bossReward";
   const isUpgrade = runStarted && (snapshot.phase === "upgrade" || snapshot.phase === "bossReward");
   const settingsDialog = settingsOpen && runStarted;
@@ -1153,7 +1154,8 @@ export default function GameCanvas() {
       <label className="settings-control"><span><b>スティック表示</b><i>{Math.round(playerSettings.stickOpacity * 100)}%</i></span><input data-testid="stick-opacity" aria-label="スティック表示" type="range" min="20" max="100" step="1" value={Math.round(playerSettings.stickOpacity * 100)} onChange={(event) => updatePlayerSettings({ ...playerSettings, stickOpacity: Number(event.target.value) / 100 })} /><small>フローティング仮想スティックの透明度</small></label>
       <div className="settings-stick-preview" style={{ "--preview-opacity": playerSettings.stickOpacity } as CSSProperties} aria-label="現在の操作表示の見本"><i /><b>操作表示の見本</b></div>
       <label className="settings-control"><span><b>カメラ倍率</b><i>{Math.round(playerSettings.cameraZoom * 100)}%</i></span><input data-testid="camera-zoom" aria-label="カメラ倍率" type="range" min="82" max="122" step="1" value={Math.round(playerSettings.cameraZoom * 100)} onChange={(event) => updatePlayerSettings({ ...playerSettings, cameraZoom: Number(event.target.value) / 100 })} /><small>低い値で近く、高い値で広い視界（射程・敵出現は変わりません）</small></label>
-      <label className="settings-toggle-row"><span><b>効果音</b><small>開始、警告、ダメージ、結果の音</small></span><input data-testid="sound-toggle" aria-label="効果音" type="checkbox" checked={audio.enabled} onChange={(event) => { audio.unlock(); audio.setEnabled(event.target.checked); }} /></label>
+      <label className="settings-toggle-row"><span><b>効果音</b><small>開始、警告、ダメージ、結果の音</small></span><input data-testid="sound-toggle" aria-label="効果音" type="checkbox" checked={audio.enabled} onChange={(event) => { audio.setEnabled(event.target.checked); if (event.target.checked) void audio.unlock(); }} /></label>
+      <label className="settings-toggle-row"><span>効果音の音量</span><input data-testid="sound-volume" aria-label="効果音の音量" type="range" min="0" max="1" step="0.05" value={audio.volume} onChange={event => audio.setVolume(Number(event.target.value))} /></label>
       <button className="settings-reset" data-testid="reset-settings" type="button" onClick={() => { updatePlayerSettings(DEFAULT_PLAYER_SETTINGS); audio.setEnabled(true); }}>初期設定に戻す</button>
     </div>
   );
@@ -1191,14 +1193,14 @@ export default function GameCanvas() {
           <h1 id="pre-run-title">サバサバ</h1>
           <p className="pre-run-purpose">自動射撃で敵の波を切り抜け、経験値を集め、装備を進化させる見下ろし型サバイバル。</p>
           <form className="pre-run-form" noValidate onSubmit={startRun}>
-            <label className="name-field"><span>プレイヤー名</span><input ref={nameInputRef} data-testid="player-name" autoComplete="nickname" maxLength={18} value={playerName} onChange={(event) => { setPlayerName(event.target.value); if (nameError) setNameError(""); }} placeholder="名前を入力してください" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "name-help name-error" : "name-help"} /><small id="name-help">次回の出撃にも保存されます。</small></label>
+            <label className="name-field"><span>プレイヤー名</span><input ref={nameInputRef} data-testid="player-name" autoComplete="nickname" maxLength={18} value={playerName} onKeyDown={(event) => { if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault(); }} onChange={(event) => { setPlayerName(event.target.value); savePlayerName(event.target.value); if (nameError) setNameError(""); }} placeholder="名前を入力してください" aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "name-help name-error" : "name-help"} /><small id="name-help">名前を入力すると、名前と記録がランキングに公開されます。空欄でも遊べます。</small></label>
             {nameError && <div id="name-error" className="name-entry-alert" role="alert" aria-live="assertive"><span aria-hidden="true">!</span><strong>{nameError}</strong></div>}
             <fieldset className="mode-picker"><legend>モードを選択</legend><div className="mode-picker-layout"><div role="radiogroup" aria-label="ゲームモード"><button data-testid="mode-normal" type="button" role="radio" aria-checked={selectedMode === "normal"} className={selectedMode === "normal" ? "selected" : ""} onClick={() => setSelectedMode("normal")}><b>通常</b><small>10分以内に最終ボスを撃破。</small></button><button data-testid="mode-endless" type="button" role="radio" aria-checked={selectedMode === "endless"} className={selectedMode === "endless" ? "selected" : ""} onClick={() => setSelectedMode("endless")}><b>無限</b><small>終わりなき波。得点を伸ばす。</small></button></div><button className="pre-run-rules-trigger" data-testid="home-rules-trigger" type="button" onClick={() => { rememberFocus(); setRulesOpen(true); }}><span>ルール説明</span><small>通常・無限の遊び方と操作を確認</small><b>確認</b></button></div></fieldset>
             <button className="start-run-button" data-testid="start-run" type="submit">出撃開始 <span>開始</span></button>
           </form>
           <button className="weapon-library-trigger" data-testid="weapon-list" type="button" onClick={() => { rememberFocus(); setWeaponDetailId(null); setWeaponLibraryOpen(true); }}><span>武器一覧</span><small>効果・レベル・進化条件を見る</small><b>開く</b></button>
-          <ShareButton className="home-share-action" label="ゲームをシェア" testId="share-home" title="サバサバ" text="【サバサバ】自動射撃で敵の波を切り抜ける、見下ろし型サバイバルゲーム。" />
-           <a className="experiment-lab-link" data-testid="home-experiment-lab" href={EXPERIMENT_LAB_URL} target="_blank" rel="noreferrer"><span>カメレオンJPの実験場</span><small>他のゲームとランキングを見る</small><b>OPEN ↗</b></a>
+          <ShareButton className="home-share-action" label="Xでシェア" testId="share-home" title="サバサバ" text="【サバサバ】自動射撃で敵の波を切り抜ける、見下ろし型サバイバルゲーム。" />
+           <a className="experiment-lab-link" data-testid="home-experiment-lab" href={`${EXPERIMENT_LAB_URL}ranking.html?game=sabasaba_${currentMode}`} target="_blank" rel="noreferrer"><span>ランキング</span><small>選択中のモードの記録を見る</small><b>OPEN ↗</b></a>
           <details className="pre-run-settings" open><summary>出撃前の設定</summary><p>端末に保存されます。出撃中は一時停止画面から変更できます。</p>{renderSettingsFields(true)}</details>
           {sceneError && <p className="scene-error" role="alert">{sceneError}</p>}
         </section>
@@ -1231,7 +1233,7 @@ export default function GameCanvas() {
         {isPaused && !settingsDialog && <div className="modal-layer pause-layer"><section className="pause-console" role="dialog" aria-modal="true" aria-labelledby="pause-title" data-dialog-root="true" data-testid="pause-dialog"><p className="modal-eyebrow">出撃状態 // 一時停止</p><h2 id="pause-title">その場で<br /><em>停止中。</em></h2><p>戦闘は停止しています。準備ができたら再開してください。</p><PauseLoadoutPanel attacks={snapshot.attacks} weaponCount={snapshot.weaponCount} weaponLimit={snapshot.weaponLimit} utilityCount={snapshot.utilityCount} utilityLimit={snapshot.utilityLimit} evolvedWeapons={snapshot.evolvedWeapons} /><div className="pause-actions"><button className="primary-dialog-button" data-testid="resume-run" type="button" onClick={() => { lifecyclePauseRequestedRef.current = false; pauseOpenRef.current = false; setPausedCommand(false); setPauseOpen(false); restoreFocus(); void audio.unlock(); }}>再開</button><button type="button" onClick={() => openSettings(true)}>設定</button><button type="button" className="danger-dialog-button" onClick={retireRun}>出撃を終了</button></div></section></div>}
         {settingsDialog && <div className="modal-layer settings-layer"><section className="settings-console settings-dialog" id="player-settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" data-dialog-root="true" data-testid="settings-dialog"><header><div><span>プレイヤー設定</span><h2 id="settings-title">出撃の<em>設定</em></h2></div><button type="button" onClick={closeSettings} aria-label="設定を閉じる">閉じる</button></header><p>端末に保存され、次回の出撃にも適用されます。</p>{renderSettingsFields(false)}<footer><small>初期値：56% / 100%</small></footer></section></div>}
         {isUpgrade && <div className="modal-layer"><section className="upgrade-console" role="dialog" aria-modal="true" aria-labelledby="upgrade-title" data-dialog-root="true" data-testid="upgrade-dialog"><p className="modal-eyebrow">{isBossReward ? "ボス報酬 // 選択可能" : snapshot.moduleMilestone ? "新しい武器を優先表示" : "強化候補を確認"}</p><h2 id="upgrade-title">{isBossReward ? <>ボス報酬を<br /><em>選択</em></> : <>戦場の<br /><em>強化を選択</em></>}</h2><p className="modal-copy">{isBossReward ? "撃破報酬をひとつ選び、戦闘を再開してください。" : snapshot.moduleMilestone ? "新しい武器を優先して表示します。空き枠がなければ装備を強化できます。" : "新しい武器の追加か、持っている装備の強化をひとつ選んでください。"} {!isBossReward && <>攻撃枠 {snapshot.weaponCount}/{snapshot.weaponLimit}（レール含む）・補助枠 {snapshot.utilityCount}/{snapshot.utilityLimit}。{currentMode === "endless" && " レベル10ごとに攻撃枠+1（最大14枠）。進化すると1枠空きます。"}</>}</p>{(isBossReward || bossRewards.length > 0) && <section className="boss-reward-panel" aria-labelledby="boss-reward-title"><header><span>ボス報酬</span><h3 id="boss-reward-title">報酬を選ぶ</h3></header>{bossRewards.length > 0 ? <div className="boss-reward-grid">{bossRewards.map((reward) => <button key={reward.id} type="button" className="boss-reward-card" disabled={!reward.enabled} onClick={() => selectBossReward(reward.id)}><strong>{reward.title}</strong><small>{reward.description}</small><i>{reward.enabled ? "取得" : "選択不可"}</i></button>)}</div> : <p className="boss-reward-empty">報酬候補を読み込み中です。</p>}</section>}{!isBossReward && <><div className="upgrade-actions"><button className="reroll-button" type="button" onClick={rerollUpgrades} disabled={snapshot.rerollsRemaining <= 0}>引き直す <span>{snapshot.rerollsRemaining}/3</span></button><small>候補を再抽選</small></div><div className="upgrade-grid">{snapshot.upgrades.map((upgrade, index) => { const current = upgrade.currentLevel !== undefined ? `レベル${upgrade.currentLevel}` : "現在"; const next = upgrade.nextLevel !== undefined ? `レベル${upgrade.nextLevel}` : "次"; const role = upgrade.role ?? (upgrade.category === "module" ? "戦場モジュール" : "標準武器"); const change = upgrade.changeSummary ?? upgrade.description; const synergy = upgrade.synergy; return <button key={upgrade.id} data-testid="upgrade-card" type="button" className="upgrade-card" onClick={() => selectUpgrade(upgrade.id)}><span className="choice-number">0{index + 1}</span><ModuleIcon id={upgrade.iconId} className="upgrade-symbol" /><span className="upgrade-code">{upgrade.code}</span><strong>{upgrade.title}{upgrade.currentLevel === 0 && <span className="new-weapon-badge">新規</span>}</strong><span className="upgrade-role">{role}</span><span className="upgrade-delta"><b>{current}</b><i>→</i><b>{next}</b></span><small>{change}</small>{synergy && <span className="upgrade-synergy"><b>組合せ</b>{synergy}</span>}<i className="install-label">決定</i></button>; })}</div></>}</section></div>}
-        {isGameover && <div className="modal-layer result-modal-layer"><section ref={resultConsoleRef} className={`failure-console result-console result-${snapshotView.outcome ?? "failed"}`} role="dialog" aria-modal="true" aria-labelledby="result-title" data-dialog-root="true" data-testid="result-dialog"><p className="modal-eyebrow danger">戦闘報告 // {resultOutcome}</p><h2 id="result-title">{resultOutcome === "成功" ? <>作戦<br />成功。</> : resultOutcome === "終了" ? <>出撃<br />終了。</> : <>信号<br /><em>断絶。</em></>}</h2><div className="result-actions result-primary-actions"><button className="primary-dialog-button" data-testid="retry-run" type="button" onClick={retryRun}>もう一度遊ぶ</button><ShareButton className="result-share-action" label="結果をシェア" testId="share-result" title="サバサバ" text={`【サバサバ】${MODE_LABELS[currentMode]} / 生存時間 ${formatTime(snapshot.seconds)} / スコア ${formatStat(score)} / レベル${snapshot.level} / 撃破${formatStat(snapshot.kills)}体${evolvedWeaponLabels.length ? ` / 進化武器：${evolvedWeaponLabels.join("・")}` : ""}`} /></div><div className="result-summary"><span><small>得点</small><b>{formatStat(score)}</b></span><span><small>生存時間</small><b>{formatTime(snapshot.seconds)}</b></span><span><small>撃破数</small><b>{formatStat(snapshot.kills)}</b></span><span><small>最終レベル</small><b>レベル{String(snapshot.level).padStart(2, "0")}</b></span></div><div className="result-goal-stats"><span><small>コンボ（得点外）</small><b>{combo} <i>×{comboMultiplier.toFixed(1)}</i></b></span><span><small>最大コンボ（得点外）</small><b>{maxCombo}</b></span><span><small>完全回避（記録）</small><b>{perfectDodges}</b></span><span><small>撃破ボス数</small><b>{bossesDefeated}</b></span></div><section className="score-breakdown" aria-label="得点の加点と減点"><header><span>得点内訳</span><b>{formatStat(snapshot.scoreBreakdown.total)}点</b></header><div className="score-positive"><span>撃破数による加点<b>+{formatStat(snapshot.scoreBreakdown.killPoints)}</b></span><span>{currentMode === "normal" ? "クリア時間による加点" : "生存時間による加点"}<b>+{formatStat(snapshot.scoreBreakdown.timePoints)}</b></span><span>レベルによる加点<b>+{formatStat(snapshot.scoreBreakdown.levelPoints)}</b></span></div><div className="score-negative"><span>被弾回数 {snapshot.damageHits}回<b>-{formatStat(snapshot.scoreBreakdown.hitPenalty)}</b></span><span>被ダメージ {snapshot.damageTaken}<b>-{formatStat(snapshot.scoreBreakdown.damagePenalty)}</b></span></div></section>{snapshotView.deathCause && resultOutcome !== "成功" && <p className="death-cause">原因 // {snapshotView.deathCause}</p>}{snapshotView.dodgeBoostSeconds !== undefined && <p className="dodge-result">回避強化 // {Number(snapshotView.dodgeBoostSeconds).toFixed(1)}秒</p>}<EvolutionResults stats={snapshot.resultStats} /><p className="total-damage-result">総ダメージ // {formatStat(snapshot.totalDamage)}</p><section className="result-breakdown" aria-label="武器別戦闘統計"><header><span>武器別戦績</span><small>進化前を含む全期間 / 得点とは別の戦闘記録</small></header><div className="result-stat-list">{snapshot.resultStats.map((stat, index) => <div className="result-stat-row" key={stat.id}><span className="result-rank">{String(index + 1).padStart(2, "0")}</span><ModuleIcon id={stat.iconId} className="result-stat-icon" /><strong>{stat.label}<small>{stat.evolutionId ? "進化武器（進化前の2武器分も含む）" : `レベル${String(stat.tier).padStart(2, "0")}`}</small></strong><b>{formatStat(stat.damage)}<small>ダメージ</small></b><i>{formatStat(stat.kills)}<small>撃破</small></i></div>)}</div></section>{rankingVisible && <section className="result-ranking-panel" data-testid="result-ranking" aria-labelledby="result-ranking-title"><header><div><span>全体ランキング // {MODE_LABELS[currentMode]}</span><h3 id="result-ranking-title">上位10件</h3></div><small>{rankingStatus === "submitting" ? "送信中" : rankingStatus === "submitted" ? "保存済み" : rankingStatus === "failed" ? "再送可能" : "待機中"}</small></header><p className={`result-ranking-status ranking-status-${rankingStatus}`} data-testid="ranking-status" aria-live="polite">{rankingMessage || (ranking.enabled ? "正規結果を検証してランキングへ送信します。" : "ランキングは現在停止中です。サーバー検証完成後に再開します。")}</p>{rankingRows.length > 0 ? <ol className="result-ranking-list">{rankingRows.map((row) => <li key={`${row.rank}-${row.displayName}`} className={row.displayName === rankingCurrentName ? "is-current-player" : undefined}><b>{row.rank}</b><span>{row.displayName}{row.displayName === rankingCurrentName && <small>あなた</small>}</span><strong>{formatStat(row.bestScore)}</strong></li>)}</ol> : <p className="result-ranking-empty">{rankingLoadError || (rankingStatus === "submitting" ? "ランキングを読み込み中…" : "まだランキング記録がありません。")}</p>}{rankingActionVisible && <button className="ranking-retry-button" data-testid="ranking-retry" type="button" onClick={retryRankingSubmission} disabled={rankingStatus === "submitting"}>{rankingStatus === "submitting" ? "ランキング送信中…" : rankingStatus === "failed" ? "記録を再送" : rankingStatus === "submitted" ? "ランキングを再送" : "ランキングへ送信"}</button>}</section>}<p>記録された戦闘結果を確認し、次の出撃に備えてください。</p><p className="best-score-line">{MODE_LABELS[currentMode]}の最高得点 // {formatStat(bestScores[currentMode] ?? score)}</p><div className="result-actions"><button data-testid="return-title" type="button" onClick={returnToTitle}>タイトルへ戻る</button><a className="experiment-lab-link" data-testid="result-experiment-lab" href={EXPERIMENT_LAB_URL} target="_blank" rel="noreferrer"><span>カメレオンJPの実験場</span><small>他のゲームとランキングを見る</small><b>OPEN ↗</b></a></div></section></div>}
+        {isGameover && <div className="modal-layer result-modal-layer"><section ref={resultConsoleRef} className={`failure-console result-console result-${snapshotView.outcome ?? "failed"}`} role="dialog" aria-modal="true" aria-labelledby="result-title" data-dialog-root="true" data-testid="result-dialog"><p className="modal-eyebrow danger">戦闘報告 // {resultOutcome}</p><h2 id="result-title">{resultOutcome === "成功" ? <>作戦<br />成功。</> : resultOutcome === "終了" ? <>出撃<br />終了。</> : <>信号<br /><em>断絶。</em></>}</h2><div className="result-actions result-primary-actions"><button className="primary-dialog-button" data-testid="retry-run" type="button" onClick={retryRun}>もう一度遊ぶ</button><ShareButton className="result-share-action" label="Xでシェア" testId="share-result" title="サバサバ" text={`【サバサバ】${MODE_LABELS[currentMode]} / 生存時間 ${formatTime(snapshot.seconds)} / スコア ${formatStat(score)} / レベル${snapshot.level} / 撃破${formatStat(snapshot.kills)}体${evolvedWeaponLabels.length ? ` / 進化武器：${evolvedWeaponLabels.join("・")}` : ""}`} /></div><div className="result-summary"><span><small>得点</small><b>{formatStat(score)}</b></span><span><small>生存時間</small><b>{formatTime(snapshot.seconds)}</b></span><span><small>撃破数</small><b>{formatStat(snapshot.kills)}</b></span><span><small>最終レベル</small><b>レベル{String(snapshot.level).padStart(2, "0")}</b></span></div><div className="result-goal-stats"><span><small>コンボ（得点外）</small><b>{combo} <i>×{comboMultiplier.toFixed(1)}</i></b></span><span><small>最大コンボ（得点外）</small><b>{maxCombo}</b></span><span><small>完全回避（記録）</small><b>{perfectDodges}</b></span><span><small>撃破ボス数</small><b>{bossesDefeated}</b></span></div><section className="score-breakdown" aria-label="得点の加点と減点"><header><span>得点内訳</span><b>{formatStat(snapshot.scoreBreakdown.total)}点</b></header><div className="score-positive"><span>撃破数による加点<b>+{formatStat(snapshot.scoreBreakdown.killPoints)}</b></span><span>{currentMode === "normal" ? "クリア時間による加点" : "生存時間による加点"}<b>+{formatStat(snapshot.scoreBreakdown.timePoints)}</b></span><span>レベルによる加点<b>+{formatStat(snapshot.scoreBreakdown.levelPoints)}</b></span></div><div className="score-negative"><span>被弾回数 {snapshot.damageHits}回<b>-{formatStat(snapshot.scoreBreakdown.hitPenalty)}</b></span><span>被ダメージ {snapshot.damageTaken}<b>-{formatStat(snapshot.scoreBreakdown.damagePenalty)}</b></span></div></section>{snapshotView.deathCause && resultOutcome !== "成功" && <p className="death-cause">原因 // {snapshotView.deathCause}</p>}{snapshotView.dodgeBoostSeconds !== undefined && <p className="dodge-result">回避強化 // {Number(snapshotView.dodgeBoostSeconds).toFixed(1)}秒</p>}<EvolutionResults stats={snapshot.resultStats} /><p className="total-damage-result">総ダメージ // {formatStat(snapshot.totalDamage)}</p><section className="result-breakdown" aria-label="武器別戦闘統計"><header><span>武器別戦績</span><small>進化前を含む全期間 / 得点とは別の戦闘記録</small></header><div className="result-stat-list">{snapshot.resultStats.map((stat, index) => <div className="result-stat-row" key={stat.id}><span className="result-rank">{String(index + 1).padStart(2, "0")}</span><ModuleIcon id={stat.iconId} className="result-stat-icon" /><strong>{stat.label}<small>{stat.evolutionId ? "進化武器（進化前の2武器分も含む）" : `レベル${String(stat.tier).padStart(2, "0")}`}</small></strong><b>{formatStat(stat.damage)}<small>ダメージ</small></b><i>{formatStat(stat.kills)}<small>撃破</small></i></div>)}</div></section>{rankingVisible && <section className="result-ranking-panel" data-testid="result-ranking" aria-labelledby="result-ranking-title"><header><div><span>全体ランキング // {MODE_LABELS[currentMode]}</span><h3 id="result-ranking-title">上位30名</h3></div><small>{rankingStatus === "submitting" ? "送信中" : rankingStatus === "submitted" ? "保存済み" : rankingStatus === "failed" ? "再送可能" : "待機中"}</small></header><p className={`result-ranking-status ranking-status-${rankingStatus}`} data-testid="ranking-status" aria-live="polite">{rankingMessage || (ranking.enabled ? "正規結果を検証してランキングへ送信します。" : "ランキングは現在停止中です。サーバー検証完成後に再開します。")}</p>{rankingRows.length > 0 ? <ol className="result-ranking-list">{rankingRows.map((row) => <li key={`${row.rank}-${row.displayName}`} className={row.displayName === rankingCurrentName ? "is-current-player" : undefined}><b>{row.rank}</b><span>{row.displayName}{row.displayName === rankingCurrentName && <small>あなた</small>}</span><strong>{formatStat(row.bestScore)}</strong></li>)}</ol> : <p className="result-ranking-empty">{rankingLoadError || (rankingStatus === "submitting" ? "ランキングを読み込み中…" : "まだランキング記録がありません。")}</p>}<button className="ranking-retry-button" type="button" onClick={() => void loadRanking(currentMode, rankingRunIdRef.current)}>ランキングを更新</button>{rankingActionVisible && <button className="ranking-retry-button" data-testid="ranking-retry" type="button" onClick={retryRankingSubmission} disabled={rankingStatus === "submitting"}>{rankingStatus === "submitting" ? "ランキング送信中…" : rankingStatus === "failed" ? "記録を再送" : rankingStatus === "submitted" ? "ランキングを再送" : "ランキングへ送信"}</button>}</section>}<p>記録された戦闘結果を確認し、次の出撃に備えてください。</p><p className="best-score-line">{MODE_LABELS[currentMode]}の最高得点 // {formatStat(bestScores[currentMode] ?? score)}</p><div className="result-actions"><button data-testid="return-title" type="button" onClick={returnToTitle}>タイトルへ戻る</button><a className="experiment-lab-link" data-testid="result-experiment-lab" href={`${EXPERIMENT_LAB_URL}ranking.html?game=sabasaba_${currentMode}`} target="_blank" rel="noreferrer"><span>ランキング</span><small>選択中のモードの記録を見る</small><b>OPEN ↗</b></a></div></section></div>}
       </section>
       {countdownRemaining > 0 && !sceneError && <div className="run-countdown-layer" data-testid="run-countdown" role="status" aria-live="assertive">
         <div className="run-countdown-console">
