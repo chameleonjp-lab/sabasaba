@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { EvolutionId } from "@/game/types";
 import { EVOLUTION_RECIPES } from "@/game/rules";
@@ -24,6 +25,6 @@ export default function EvolutionNotice({ weapons, visible }: { weapons: Evoluti
   }, [visible, names]);
   if (!visible || names.length === 0) return null;
   return <div className="evolution-notice" role="status" aria-live="polite" data-testid="evolution-notice">
-    <b>武器が進化！</b><strong>{names.join("・")}</strong><span>2つの武器が合体。攻撃枠が1つ空きました。</span>
+    <b>{t("武器が進化！")}</b><strong>{names.map(name => t(name)).join(t("・"))}</strong><span>{t("2つの武器が合体。攻撃枠が1つ空きました。")}</span>
   </div>;
 }

@@ -57,3 +57,9 @@
   min-height: 72px;
   opacity: var(--preview-opacity, 0.56);
 }
+
+/* A translated label must wrap instead of pushing controls outside a narrow view. */
+.language-control { display: grid; gap: .45rem; margin-block: .8rem; min-width: 0; }
+.language-control select { min-height: 44px; width: 100%; max-width: 100%; padding: .65rem; color: inherit; background: #0b1220; border: 1px solid #738295; border-radius: .5rem; font: inherit; }
+.share-button, .ranking-retry-button, .start-run-button, .pre-run-rules-trigger, .weapon-library-card, .weapon-library-trigger { white-space: normal; overflow-wrap: anywhere; }
+.weapon-detail-panel, .pre-run-rules-modal, .pause-loadout-panel, .result-console { overflow-wrap: anywhere; }

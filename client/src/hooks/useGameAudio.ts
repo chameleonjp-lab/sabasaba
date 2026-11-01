@@ -79,9 +79,13 @@ export function useGameAudio() {
   const enabledRef = useRef(enabled), volumeRef = useRef(volume);
   const sourcesRef = useRef(new Map<AudioScheduledSourceNode, AudioNode[]>());
   const lastCueRef = useRef(new Map<GameSoundCue, number>());
+  const playbackEpochRef = useRef(0);
   const stop = useCallback(() => {
+    playbackEpochRef.current += 1;
     for (const [source,nodes] of Array.from(sourcesRef.current)) {
-      try { source.stop(); source.disconnect(); nodes.forEach(node => node.disconnect()); } catch { /* Ended source. */ }
+      try { source.stop(); } catch { /* An already-ended source still needs disconnection. */ }
+      try { source.disconnect(); } catch { /* Continue releasing the other nodes. */ }
+      nodes.forEach(node => { try { node.disconnect(); } catch { /* Already disconnected. */ } });
     }
     sourcesRef.current.clear();
   }, []);
@@ -97,13 +101,17 @@ export function useGameAudio() {
     if (!AudioContextCtor) return null;
     if (!contextRef.current) {
       try {
-        contextRef.current = new AudioContextCtor();
+        const context = new AudioContextCtor();
+        contextRef.current = context;
+        context.addEventListener("statechange", () => {
+          if (contextRef.current === context && context.state !== "running") stop();
+        });
       } catch {
         return null;
       }
     }
     return contextRef.current;
-  }, []);
+  }, [stop]);
 
   const setEnabled = useCallback((next: boolean) => {
     enabledRef.current = next;
@@ -194,6 +202,12 @@ export function useGameAudio() {
     preloadExternalSamples(context);
   }, [getContext, preloadExternalSamples]);
 
+  const unlockAndPlay = useCallback(async (cue: GameSoundCue) => {
+    const epoch = playbackEpochRef.current;
+    await unlock();
+    if (epoch === playbackEpochRef.current) play(cue);
+  }, [unlock, play]);
+
   useEffect(() => {
     const hidden = () => { if (document.hidden) { stop(); if (contextRef.current?.state === 'running') void contextRef.current.suspend().catch(() => undefined); } };
     document.addEventListener('visibilitychange',hidden);
@@ -202,8 +216,9 @@ export function useGameAudio() {
   useEffect(() => () => {
     stop();
     const context = contextRef.current;
+    contextRef.current = null;
     if (context) void context.close().catch(() => undefined);
   }, []);
 
-  return useMemo(() => ({ enabled, volume, setVolume, setEnabled, unlock, play }), [enabled, volume, setVolume, play, setEnabled, unlock]);
+  return useMemo(() => ({ enabled, volume, setVolume, setEnabled, unlock, unlockAndPlay, play }), [enabled, volume, setVolume, play, setEnabled, unlock, unlockAndPlay]);
 }

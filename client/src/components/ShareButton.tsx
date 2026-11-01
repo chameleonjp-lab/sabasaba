@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { useEffect, useRef, useState } from "react";
 
 export const buildShareText = (text: string, url: string) => `${text.trim()}\n${url}`;
@@ -41,15 +42,15 @@ export default function ShareButton({ text, label, testId, className = "" }: Sha
     const shareText = buildShareText(text, url);
     try {
       const popup = window.open(buildXIntent(shareText), '_blank');
-      if (popup) { popup.opener = null; showStatus('Xの投稿画面を開きました。'); return; }
+      if (popup) { popup.opener = null; showStatus(t('Xの投稿画面を開きました。')); return; }
     } catch { /* Copy and manual text remain available. */ }
 
     try {
       await navigator.clipboard.writeText(shareText);
-      showStatus("シェア文をコピーしました。");
+      showStatus(t("シェア文をコピーしました。"));
     } catch {
       setManualText(shareText);
-      showStatus("下のシェア文を選択してコピーできます。");
+      showStatus(t("下のシェア文を選択してコピーできます。"));
     }
   };
 
@@ -66,7 +67,7 @@ export default function ShareButton({ text, label, testId, className = "" }: Sha
       <button className="share-button" data-testid={testId} type="button" disabled={pending} onClick={() => void share()}>
         {label}
       </button>
-      {manualText && <textarea className="share-manual-text" aria-label="コピー用のシェア文" readOnly value={manualText} onFocus={(event) => event.currentTarget.select()} />}
+      {manualText && <textarea className="share-manual-text" aria-label={t("コピー用のシェア文")} readOnly value={manualText} onFocus={(event) => event.currentTarget.select()} />}
       {status && <p className="share-status" role="status" aria-live="polite">{status}</p>}
     </div>
   );

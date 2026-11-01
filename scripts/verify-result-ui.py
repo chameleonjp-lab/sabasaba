@@ -18,6 +18,13 @@ def contrast(foreground, background):
     return (b + 0.05) / (a + 0.05)
 
 
+def isolated_context(browser, **options):
+    context = browser.new_context(**options)
+    # Even a regression in preview mode must never send production ranking data.
+    context.route("https://*.supabase.co/**", lambda route: route.abort())
+    return context
+
+
 def verify(url, output):
     output.mkdir(parents=True, exist_ok=True)
     report = []
@@ -25,7 +32,7 @@ def verify(url, output):
         browser = p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
         for mode in ["normal", "endless"]:
             for width, height in [(390, 844), (402, 874), (430, 932), (844, 390), (1440, 900)]:
-                context = browser.new_context(viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=width < 900, has_touch=width < 900)
+                context = isolated_context(browser, viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=width < 900, has_touch=width < 900)
                 page = context.new_page()
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
@@ -55,7 +62,7 @@ def verify(url, output):
                 assert not errors, errors
                 report.append({"mode": mode, "width": width, "height": height, "result": "pass"})
                 context.close()
-        context = browser.new_context(viewport={"width": 390, "height": 844}, locale="ja-JP", is_mobile=True, has_touch=True)
+        context = isolated_context(browser, viewport={"width": 390, "height": 844}, locale="ja-JP", is_mobile=True, has_touch=True)
         page = context.new_page()
         page.goto(f"{url}?result&mode=endless", wait_until="domcontentloaded")
         share = page.get_by_test_id("share-result"); share.wait_for(timeout=30000)
@@ -89,7 +96,43 @@ def verify(url, output):
         page.get_by_test_id("retry-run").click()
         page.get_by_test_id("retry-run").wait_for(state="hidden")
         report.append({"share": "X intent, clipboard, manual fallback, duplicate guard", "replay": "pass"})
-        context.close(); browser.close()
+        context.close()
+        languages = ["ja", "en", "es", "pt-BR", "zh-Hans", "fr", "de", "ko", "ru", "it", "zh-Hant", "id", "tr", "vi", "th"]
+        for language in languages:
+            context = isolated_context(browser, viewport={"width": 393, "height": 852}, locale="ja-JP", is_mobile=True, has_touch=True)
+            context.add_init_script("""{
+              if (!localStorage.getItem('sabasaba-player-name-v2')) localStorage.setItem('sabasaba-player-name-v2','ランキング');
+              localStorage.setItem('neon-siege-player-audio-v1','off');
+              localStorage.setItem('sabasaba.audio-volume.v1','0');
+            }""")
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded")
+            selector = page.get_by_test_id("language-select")
+            selector.select_option(language)
+            page.wait_for_function("language => document.documentElement.lang === language", arg=language)
+            assert page.get_by_test_id("player-name").input_value() == "ランキング"
+            assert not page.get_by_test_id("sound-toggle").is_checked()
+            assert page.get_by_test_id("sound-volume").input_value() == "0"
+            page.get_by_test_id("mode-endless").click()
+            assert "sabasaba_endless" in page.get_by_test_id("home-experiment-lab").get_attribute("href")
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            page.reload(wait_until="domcontentloaded")
+            assert page.get_by_test_id("language-select").input_value() == language
+            page.goto(f"{url}?result&mode=endless", wait_until="domcontentloaded")
+            share = page.get_by_test_id("share-result")
+            share.wait_for(timeout=30000)
+            label = share.inner_text().strip()
+            assert label
+            if language != "ja":
+                assert label != "Xでシェア"
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            for button in [share, page.get_by_test_id("retry-run")]:
+                box = button.bounding_box()
+                assert box and box["height"] >= 44 and box["width"] >= 44
+                assert 0 <= box["x"] and box["x"] + box["width"] <= 394
+            report.append({"language": language, "savedChoice": "pass", "nameAndMutedZeroPreserved": "pass", "selectedModeLink": "pass", "resultLayout": "pass"})
+            context.close()
+        browser.close()
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))
 

@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { EVOLUTION_RECIPES } from "@/game/rules";
 import { WEAPON_LIBRARY, type WeaponLibraryEntry } from "@/game/weaponCatalog";
 import type {
@@ -81,7 +82,7 @@ const getAcquiredMap = (
         title: entry?.title || moduleId,
         iconId: entry?.iconId || moduleId,
         tier: 3,
-        detail: "進化素材として統合済み",
+        detail: t("進化素材として統合済み"),
       });
     }
   }
@@ -117,29 +118,29 @@ const getSynergyProgressCopy = (
   state: SynergyState,
   acquired: ReadonlyMap<UpgradeId, AcquiredWeapon>,
 ) => {
-  if (state === "complete") return "完成済み：この相乗効果が有効です。";
-  if (state === "ready") return "発動条件達成：次の強化で自動進化します。";
+  if (state === "complete") return t("完成済み：この相乗効果が有効です。");
+  if (state === "ready") return t("発動条件達成：次の強化で自動進化します。");
 
   const missing = recipe.modules.filter((moduleId) => !acquired.has(moduleId));
   if (missing.length === 0) {
-    return "あと一歩：" + recipe.modules.map(getTitle).join(" と ") + "をそれぞれLv.3まで強化。";
+    return t(`あと一歩：${getTitle(recipe.modules[0])}と${getTitle(recipe.modules[1])}をそれぞれLv.3まで強化。`);
   }
   if (missing.length === 1) {
     const current = recipe.modules.find((moduleId) => acquired.has(moduleId));
-    return "次に必要：" + getTitle(missing[0]) + "（" + (current ? getTitle(current) : "もう一方") + "と両方Lv.3）";
+    return t(`次に必要：${getTitle(missing[0])}（${current ? getTitle(current) : "もう一方"}と両方Lv.3）`);
   }
-  return "必要：" + missing.map(getTitle).join(" / ") + "をそれぞれLv.3まで。";
+  return t(`必要：${getTitle(missing[0])}と${getTitle(missing[1])}をそれぞれLv.3まで。`);
 };
 
 const getNodeProgressCopy = (
   state: SynergyNodeState,
   item: AcquiredWeapon | undefined,
 ) => {
-  if (state === "next") return "次に必要";
-  if (state === "missing") return "未獲得";
-  if (!item) return "未獲得";
-  if (state === "maxed") return "Lv.3 / 準備完了";
-  return "Lv." + Math.min(3, Math.max(1, item.tier)) + " / 獲得済み";
+  if (state === "next") return t("次に必要");
+  if (state === "missing") return t("未獲得");
+  if (!item) return t("未獲得");
+  if (state === "maxed") return t("Lv.3 / 準備完了");
+  return "Lv." + Math.min(3, Math.max(1, item.tier)) + t(" / 獲得済み");
 };
 
 function PauseSynergyNode({
@@ -160,7 +161,7 @@ function PauseSynergyNode({
         <PauseModuleIcon id={entry?.iconId || moduleId} />
       </div>
       <div className="pause-synergy-node-copy">
-        <strong>{entry?.title || moduleId}</strong>
+        <strong>{t(entry?.title || moduleId)}</strong>
         <small>{getNodeProgressCopy(state, item)}</small>
       </div>
     </div>
@@ -175,15 +176,15 @@ function PauseSynergyResult({
   state: SynergyState;
 }) {
   return (
-    <div className={"pause-synergy-result pause-synergy-result-" + state} aria-label={recipe.name + " " + EVOLUTION_EFFECTS[recipe.id]}>
+    <div className={"pause-synergy-result pause-synergy-result-" + state} aria-label={t(recipe.name) + " " + t(EVOLUTION_EFFECTS[recipe.id])}>
       <div className="pause-synergy-result-icon" aria-hidden="true">
         <PauseModuleIcon id={recipe.modules[0]} className="pause-synergy-result-glyph pause-synergy-result-glyph-a" />
         <PauseModuleIcon id={recipe.modules[1]} className="pause-synergy-result-glyph pause-synergy-result-glyph-b" />
         <span className="pause-synergy-result-star">✦</span>
       </div>
-      <strong>{recipe.name}</strong>
-      <small>{state === "complete" ? "有効" : state === "ready" ? "進化可能" : "進化先"}</small>
-      <p>{EVOLUTION_EFFECTS[recipe.id]}</p>
+      <strong>{t(recipe.name)}</strong>
+      <small>{state === "complete" ? t("有効") : state === "ready" ? t("進化可能") : t("進化先")}</small>
+      <p>{t(EVOLUTION_EFFECTS[recipe.id])}</p>
     </div>
   );
 }
@@ -204,12 +205,10 @@ export default function PauseLoadoutPanel({
       <section className="pause-loadout-panel" aria-labelledby="pause-loadout-title" data-testid="pause-loadout-panel">
         <header className="pause-loadout-header">
           <div>
-            <span>装備状況</span>
-            <h3 id="pause-loadout-title">現在の装備</h3>
+            <span>{t("装備状況")}</span>
+            <h3 id="pause-loadout-title">{t("現在の装備")}</h3>
           </div>
-          <small>
-            攻撃 {weaponCount}/{weaponLimit}　補助 {utilityCount}/{utilityLimit}
-          </small>
+          <small>{t(`攻撃${weaponCount}/${weaponLimit}　補助${utilityCount}/${utilityLimit}`)}</small>
         </header>
         {activeWeapons.length > 0 ? (
           <div className="pause-loadout-grid" data-testid="pause-loadout-list">
@@ -217,30 +216,30 @@ export default function PauseLoadoutPanel({
               <div className="pause-loadout-item" data-testid={"pause-loadout-" + attack.id} key={attack.id}>
                 <PauseModuleIcon id={attack.iconId} className="pause-loadout-icon" />
                 <div>
-                  <strong>{attack.label}</strong>
-                  <small>Lv.{Math.max(1, attack.tier)}　//　{attack.detail}</small>
+                  <strong>{t(attack.label)}</strong>
+                  <small>Lv.{Math.max(1, attack.tier)}　//　{t(attack.detail)}</small>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="pause-loadout-empty">まだ装備を取得していません。</p>
+          <p className="pause-loadout-empty">{t("まだ装備を取得していません。")}</p>
         )}
       </section>
 
       <section className="pause-synergy-section" aria-labelledby="pause-synergy-title" data-testid="pause-synergy-panel">
         <header className="pause-synergy-header">
           <div>
-            <span>進化ルート // 相関図</span>
-            <h3 id="pause-synergy-title">相乗効果</h3>
+            <span>{t("進化ルート // 相関図")}</span>
+            <h3 id="pause-synergy-title">{t("相乗効果")}</h3>
           </div>
-          <small>2つをLv.3まで</small>
+          <small>{t("2つをLv.3まで")}</small>
         </header>
-        <p className="pause-synergy-intro">アイコン同士を揃えると、強力な進化武器が自動で解放されます。</p>
-        <div className="pause-synergy-legend" aria-label="相関図の見方">
-          <span><i className="pause-synergy-legend-swatch is-bright" />獲得済み</span>
-          <span><i className="pause-synergy-legend-swatch is-next" />次に必要</span>
-          <span><i className="pause-synergy-legend-swatch is-dim" />未獲得</span>
+        <p className="pause-synergy-intro">{t("アイコン同士を揃えると、強力な進化武器が自動で解放されます。")}</p>
+        <div className="pause-synergy-legend" aria-label={t("相関図の見方")}>
+          <span><i className="pause-synergy-legend-swatch is-bright" />{t("獲得済み")}</span>
+          <span><i className="pause-synergy-legend-swatch is-next" />{t("次に必要")}</span>
+          <span><i className="pause-synergy-legend-swatch is-dim" />{t("未獲得")}</span>
         </div>
         <div className="pause-synergy-list">
           {EVOLUTION_RECIPES.map((recipe) => {

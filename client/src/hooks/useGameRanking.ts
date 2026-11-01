@@ -121,7 +121,14 @@ const requestRpc = async (rpc: string, body: Record<string, unknown>) => {
   }
 };
 
-const readPending = (): PendingSubmission[] => {
+const sessionPending = new Map<string, PendingSubmission>();
+const acknowledgedTokens = new Set<string>();
+
+export class RankingSubmissionError extends Error {
+  constructor(readonly persisted: boolean, readonly originalError: unknown) { super("ranking_submission_failed"); }
+}
+
+const readStoredPending = (): PendingSubmission[] => {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(PENDING_STORAGE_KEY) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -135,19 +142,26 @@ const readPending = (): PendingSubmission[] => {
   }
 };
 
-const writePending = (pending: PendingSubmission[]) => {
-  try { window.localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending)); }
-  catch { /* The current request still proceeds even when storage is unavailable. */ }
+const readPending = (): PendingSubmission[] => {
+  const all = new Map(readStoredPending().filter(row => !acknowledgedTokens.has(row.playToken)).map(row => [row.playToken, row]));
+  for (const [token, row] of Array.from(sessionPending)) all.set(token, row);
+  return Array.from(all.values());
+};
+
+const writePending = (pending: PendingSubmission[]): boolean => {
+  try { window.localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending)); return true; }
+  catch { return false; }
 };
 
 const queuePending = (payload: PendingSubmission) => {
-  const pending = readPending().filter((entry) => entry.playToken !== payload.playToken);
-  pending.push(payload);
-  writePending(pending.slice(-20));
+  sessionPending.set(payload.playToken, payload);
+  return writePending(readPending());
 };
 
 const removePending = (playToken: string) => {
-  writePending(readPending().filter((entry) => entry.playToken !== playToken));
+  sessionPending.delete(playToken);
+  acknowledgedTokens.add(playToken);
+  writePending(readPending());
 };
 
 const parseSubmission = (data: unknown): RankingSubmission => {
@@ -220,10 +234,14 @@ export function useGameRanking() {
       damageTaken: Math.max(0, Math.trunc(asFiniteNumber(snapshot.damageTaken))),
       queuedAt: new Date().toISOString(),
     };
-    queuePending(payload);
-    const result = await submitPendingPayload(payload);
-    removePending(payload.playToken);
-    return result;
+    const persisted = queuePending(payload);
+    try {
+      const result = await submitPendingPayload(payload);
+      removePending(payload.playToken);
+      return result;
+    } catch (error) {
+      throw new RankingSubmissionError(persisted, error);
+    }
   };
 
   const retryPendingSubmissions = async () => {
