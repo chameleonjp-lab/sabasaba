@@ -25,6 +25,25 @@ def isolated_context(browser, **options):
     return context
 
 
+def verify_share_colors(page, button):
+    def assert_colors():
+        style = button.evaluate("b => {const s=getComputedStyle(b);return {color:s.color,background:s.backgroundColor,image:s.backgroundImage};}")
+        assert style == {"color": "rgb(255, 255, 255)", "background": "rgb(0, 0, 0)", "image": "none"}, style
+    button.scroll_into_view_if_needed()
+    assert_colors()
+    button.hover(); assert_colors()
+    button.focus(); assert_colors()
+    # Check :active without activating X: release the pointer outside the button.
+    box = button.bounding_box()
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    page.mouse.down()
+    try:
+        assert_colors()
+    finally:
+        page.mouse.move(0, 0)
+        page.mouse.up()
+
+
 def verify(url, output):
     output.mkdir(parents=True, exist_ok=True)
     report = []
@@ -40,6 +59,7 @@ def verify(url, output):
                 retry, share = page.get_by_test_id("retry-run"), page.get_by_test_id("share-result")
                 retry.wait_for(timeout=30000)
                 page.wait_for_timeout(250)
+                verify_share_colors(page, share)
                 page.screenshot(path=str(output / f"initial-{mode}-{width}x{height}.png"))
                 for button in [retry, share]:
                     box = button.bounding_box()
@@ -109,6 +129,7 @@ def verify(url, output):
             page.goto(url, wait_until="domcontentloaded")
             selector = page.get_by_test_id("language-select")
             selector.select_option(language)
+            verify_share_colors(page, page.get_by_test_id("share-home"))
             page.wait_for_function("language => document.documentElement.lang === language", arg=language)
             assert page.get_by_test_id("player-name").input_value() == "ランキング"
             assert not page.get_by_test_id("sound-toggle").is_checked()
