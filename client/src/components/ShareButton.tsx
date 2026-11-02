@@ -1,7 +1,7 @@
 import { t } from "@/i18n/runtime";
 import { useEffect, useRef, useState } from "react";
 
-export const buildShareText = (text: string, url: string) => `${text.trim()}\n${url}`;
+export const buildShareText = (text: string, url: string) => `${text.trim()}\n#サバサバ #ゲーム制作\n${url}`;
 
 type ShareButtonProps = {
   title: string;

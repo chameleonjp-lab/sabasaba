@@ -7,6 +7,8 @@ import json
 import re
 from pathlib import Path
 from playwright.sync_api import sync_playwright
+from browser_network_safety import install_boundary, preview_origin
+from share_acceptance import verify_extra
 
 
 def contrast(foreground, background):
@@ -18,10 +20,10 @@ def contrast(foreground, background):
     return (b + 0.05) / (a + 0.05)
 
 
-def isolated_context(browser, **options):
-    context = browser.new_context(**options)
-    # Even a regression in preview mode must never send production ranking data.
-    context.route("https://*.supabase.co/**", lambda route: route.abort())
+def isolated_context(browser, url, blocked=None, **options):
+    preview_origin(url)
+    context = browser.new_context(service_workers="block", **options)
+    install_boundary(context, url, blocked if blocked is not None else [])
     return context
 
 
@@ -45,6 +47,7 @@ def verify_share_colors(page, button):
 
 
 def verify(url, output, browser_name="chromium"):
+    preview_origin(url)
     output.mkdir(parents=True, exist_ok=True)
     report = []
     with sync_playwright() as p:
@@ -53,7 +56,7 @@ def verify(url, output, browser_name="chromium"):
         browser = browser_type.launch(**launch_options)
         for mode in ["normal", "endless"]:
             for width, height in [(390, 844), (402, 874), (430, 932), (844, 390), (1440, 900)]:
-                context = isolated_context(browser, viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=width < 900, has_touch=width < 900)
+                context = isolated_context(browser, url, viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=width < 900, has_touch=width < 900)
                 page = context.new_page()
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
@@ -84,7 +87,7 @@ def verify(url, output, browser_name="chromium"):
                 assert not errors, errors
                 report.append({"mode": mode, "width": width, "height": height, "result": "pass"})
                 context.close()
-        context = isolated_context(browser, viewport={"width": 390, "height": 844}, locale="ja-JP", is_mobile=True, has_touch=True)
+        context = isolated_context(browser, url, viewport={"width": 390, "height": 844}, locale="ja-JP", is_mobile=True, has_touch=True)
         page = context.new_page()
         page.goto(f"{url}?result&mode=endless", wait_until="domcontentloaded")
         share = page.get_by_test_id("share-result"); share.wait_for(timeout=30000)
@@ -121,7 +124,7 @@ def verify(url, output, browser_name="chromium"):
         context.close()
         languages = ["ja", "en", "es", "pt-BR", "zh-Hans", "fr", "de", "ko", "ru", "it", "zh-Hant", "id", "tr", "vi", "th"]
         for language in languages:
-            context = isolated_context(browser, viewport={"width": 393, "height": 852}, locale="ja-JP", is_mobile=True, has_touch=True)
+            context = isolated_context(browser, url, viewport={"width": 393, "height": 852}, locale="ja-JP", is_mobile=True, has_touch=True)
             context.add_init_script("""{
               if (!localStorage.getItem('sabasaba-player-name-v2')) localStorage.setItem('sabasaba-player-name-v2','ランキング');
               localStorage.setItem('neon-siege-player-audio-v1','off');
@@ -155,6 +158,7 @@ def verify(url, output, browser_name="chromium"):
                 assert 0 <= box["x"] and box["x"] + box["width"] <= 394
             report.append({"language": language, "savedChoice": "pass", "nameAndMutedZeroPreserved": "pass", "selectedModeLink": "pass", "resultLayout": "pass"})
             context.close()
+        verify_extra(browser, url, output, isolated_context)
         browser.close()
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))

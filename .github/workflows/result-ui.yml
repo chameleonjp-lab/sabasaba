@@ -1,5 +1,7 @@
 name: Result UI regression
 on:
+  push:
+    branches: [work/sabasaba-share-acceptance-20261102]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -29,7 +31,12 @@ jobs:
           python-version: '3.12'
       - run: pip install playwright==1.55.0
       - run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - run: python scripts/test_browser_network_safety.py
+      - run: node scripts/test_share_measure.cjs
+      - run: node scripts/test_share_text.cjs
       - name: Verify result layouts, share fallback and replay
+        env:
+          SABASABA_CAPTURE_SHARE_MATERIAL: ${{ github.event_name == 'push' && '1' || '0' }}
         run: |
           pnpm exec vite preview --host 127.0.0.1 --port 4173 > /tmp/preview.log 2>&1 &
           for i in {1..30}; do curl -fsS http://127.0.0.1:4173/sabasaba/ > /dev/null && break; sleep 1; done

@@ -1,0 +1,12 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const source=fs.readFileSync('scripts/share_acceptance.py','utf8').match(/MEASURE = '''([\s\S]*?)'''/)[1];
+const style={opacity:'1',display:'block',visibility:'visible',overflowX:'visible',overflowY:'visible',backgroundColor:'rgb(0, 0, 0)',color:'rgb(255, 255, 255)'};
+const rect=(x,y,w,h)=>({x,y,width:w,height:h,left:x,right:x+w,top:y,bottom:y+h});
+const parent={style:{...style,overflowX:'hidden'},getBoundingClientRect:()=>rect(0,0,100,100),clientLeft:0,clientTop:0,clientWidth:100,clientHeight:100,parentElement:null};
+const el={style,parentElement:parent,getBoundingClientRect:()=>rect(70,20,44,44),scrollWidth:44,clientWidth:44,scrollHeight:44,clientHeight:44,textContent:'Xでシェア',disabled:false,contains:n=>n===el};
+const measure=vm.runInNewContext('('+source+')',{getComputedStyle:n=>n.style,innerWidth:393,innerHeight:852,document:{elementFromPoint:()=>el}});
+assert.equal(measure(el).hit,true);assert.equal(measure(el).clipped,true,'partial ancestor clip must fail even with center hit');
+parent.style.overflowX='visible';assert.equal(measure(el).clipped,false);
+parent.style.opacity='0';assert.equal(measure(el).opacity,0);
+parent.style.display='none';assert.equal(measure(el).visible,false);
+console.log('actual measurement: partial clipping, no clip, transparent and hidden ancestor PASS');
