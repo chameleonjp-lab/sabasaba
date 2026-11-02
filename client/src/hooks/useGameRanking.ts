@@ -164,9 +164,32 @@ const removePending = (playToken: string) => {
   writePending(readPending());
 };
 
-const parseSubmission = (data: unknown): RankingSubmission => {
-  const result = firstResult(data);
-  if (!result || result.accepted !== true) throw new Error("ranking_not_accepted");
+const isReceiptInteger = (value: unknown): value is number => typeof value === "number"
+  && Number.isInteger(value) && value >= -2147483648 && value <= 2147483647;
+
+const parseSubmission = (data: unknown, payload: PendingSubmission): RankingSubmission => {
+  const result = Array.isArray(data) && data.length === 1 ? asRecord(data[0]) : null;
+  // The verified RPC always returns one complete 13-column row, also on retry.
+  // Do not turn a truncated response into a zero score and discard its retry token.
+  const expected = {
+    kill_points: payload.kills * 100,
+    time_points: payload.mode === "normal" ? Math.max(0, 600 - payload.elapsedSeconds) * 100 : payload.elapsedSeconds * 10,
+    level_points: payload.level * 250,
+    hit_penalty: payload.damageHits * 400,
+    damage_penalty: payload.damageTaken * 10,
+  };
+  const positiveTotal = expected.kill_points + expected.time_points + expected.level_points;
+  const penaltyTotal = expected.hit_penalty + expected.damage_penalty;
+  if (!result || result.accepted !== true
+    || typeof result.already_submitted !== "boolean" || typeof result.is_new_best !== "boolean"
+    || !isReceiptInteger(result.result_score) || result.result_score !== payload.score
+    || result.result_score !== positiveTotal - penaltyTotal
+    || !isReceiptInteger(result.result_best_score) || result.result_best_score < result.result_score
+    || !isReceiptInteger(result.result_play_count) || result.result_play_count < 1
+    || !Object.entries({ ...expected, positive_total: positiveTotal, penalty_total: penaltyTotal })
+      .every(([key, value]) => isReceiptInteger(result[key]) && result[key] === value)) {
+    throw new Error("ranking_invalid_receipt");
+  }
   return {
     isNewBest: result.is_new_best === true,
     alreadySubmitted: result.already_submitted === true,
@@ -197,7 +220,7 @@ const submitPendingPayload = async (payload: PendingSubmission) => parseSubmissi
   p_damage_hits: payload.damageHits,
   p_damage_taken: payload.damageTaken,
   p_client_version: CLIENT_VERSION,
-}));
+}), payload);
 
 export function useGameRanking() {
   const startRun = async (mode: GameMode, displayName: string, clientRunId: string): Promise<RankingRunSession> => {
@@ -282,3 +305,4 @@ export function useGameRanking() {
 
   return useMemo(() => ({ enabled: RANKING_ENABLED, startRun, submitRun, retryPendingSubmissions, fetchRanking }), []);
 }
+

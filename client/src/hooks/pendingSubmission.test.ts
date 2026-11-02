@@ -9,7 +9,7 @@ async function setup(failStorage=false){
  const {useGameRanking}=await import('./useGameRanking');
  return {api:useGameRanking(),stored};
 }
-const snapshot={outcome:'clear',score:1,seconds:600,kills:1,level:1,damageHits:0,damageTaken:0} as any;
+const snapshot={outcome:'clear',score:350,seconds:600,kills:1,level:1,damageHits:0,damageTaken:0} as any;
 it('keeps all 21 unsent receipts without evicting the oldest',async()=>{
  const {api,stored}=await setup();
  for(let i=0;i<21;i++)await api.submitRun({playToken:`p${i}`,mode:'normal',displayName:'A',clientRunId:`r${i}`,playCount:1},snapshot).catch(()=>{});
@@ -32,8 +32,23 @@ it('does not remove old persisted receipts when a newer receipt cannot be saved'
 it('keeps the same token for retries and does not retry an acknowledged in-memory receipt',async()=>{
  const {api}=await setup(true);
  await api.submitRun({playToken:'same',mode:'normal',displayName:'A',clientRunId:'r',playCount:1},snapshot).catch(()=>{});
- vi.mocked(fetch).mockResolvedValue({ok:true,text:async()=>JSON.stringify({accepted:true,result_score:1})} as Response);
+ vi.mocked(fetch).mockResolvedValue({ok:true,text:async()=>JSON.stringify([receipt()])} as Response);
  expect((await api.retryPendingSubmissions()).submitted).toBe(1);
  expect((await api.retryPendingSubmissions()).submitted).toBe(0);
  expect(JSON.parse(vi.mocked(fetch).mock.calls[1][1]!.body as string).p_play_token).toBe('same');
+});
+
+const receipt=(score=350)=>({accepted:true,already_submitted:false,result_score:score,result_best_score:score,result_play_count:1,is_new_best:true,kill_points:100,time_points:0,level_points:250,hit_penalty:0,damage_penalty:0,positive_total:350,penalty_total:0});
+it('keeps the captured result pending for malformed or mismatched server receipts',async()=>{
+ const {api,stored}=await setup();
+ const captured={...snapshot,score:350};
+ const valid=receipt();
+ for(const bad of [[{accepted:true}],[{...valid,result_score:999}],[{...valid,result_play_count:2147483648}],[{...valid,already_submitted:'true'}],[valid,valid],valid,[{...valid,kill_points:'100'}],[{...valid,positive_total:351}],[{...valid,result_best_score:349}]]){
+ vi.mocked(fetch).mockResolvedValue({ok:true,text:async()=>JSON.stringify(bad)} as Response);
+ await expect(api.submitRun({playToken:'receipt',mode:'normal',displayName:'A',clientRunId:'r',playCount:1},captured)).rejects.toMatchObject({persisted:true});
+ expect(JSON.parse(stored.get('sabasaba-ranking-pending-v2')!)).toHaveLength(1);
+ }
+ vi.mocked(fetch).mockResolvedValue({ok:true,text:async()=>JSON.stringify([{...valid,already_submitted:true,is_new_best:false}])} as Response);
+ expect((await api.retryPendingSubmissions()).submitted).toBe(1);
+ expect(JSON.parse(stored.get('sabasaba-ranking-pending-v2')!)).toHaveLength(0);
 });
