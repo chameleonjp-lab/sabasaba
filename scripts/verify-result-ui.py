@@ -1,5 +1,5 @@
 """Real built-page checks. Preview mode never submits a score or starts a ranked run.
-Run: pip install playwright==1.55.0; playwright install chromium; pnpm build;
+Run: pip install playwright==1.55.0; playwright install chromium webkit; pnpm build;
      python scripts/verify-result-ui.py --url http://127.0.0.1:4173/sabasaba/
 """
 import argparse
@@ -44,11 +44,13 @@ def verify_share_colors(page, button):
         page.mouse.up()
 
 
-def verify(url, output):
+def verify(url, output, browser_name="chromium"):
     output.mkdir(parents=True, exist_ok=True)
     report = []
     with sync_playwright() as p:
-        browser = p.chromium.launch(args=["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
+        browser_type = getattr(p, browser_name)
+        launch_options = {"args": ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"]} if browser_name == "chromium" else {}
+        browser = browser_type.launch(**launch_options)
         for mode in ["normal", "endless"]:
             for width, height in [(390, 844), (402, 874), (430, 932), (844, 390), (1440, 900)]:
                 context = isolated_context(browser, viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=width < 900, has_touch=width < 900)
@@ -161,6 +163,8 @@ def verify(url, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", default="http://127.0.0.1:4173/sabasaba/")
+    parser.add_argument("--browser", choices=["chromium", "webkit"], default="chromium")
     parser.add_argument("--output", type=Path, default=Path("artifacts/result-ui"))
     args = parser.parse_args()
-    verify(args.url, args.output)
+    verify(args.url, args.output, args.browser)
+

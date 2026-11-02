@@ -9,6 +9,10 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,16 +28,17 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install playwright==1.55.0
-      - run: python -m playwright install --with-deps chromium
+      - run: python -m playwright install --with-deps ${{ matrix.browser }}
       - name: Verify result layouts, share fallback and replay
         run: |
           pnpm exec vite preview --host 127.0.0.1 --port 4173 > /tmp/preview.log 2>&1 &
           for i in {1..30}; do curl -fsS http://127.0.0.1:4173/sabasaba/ > /dev/null && break; sleep 1; done
-          python scripts/verify-result-ui.py
+          python scripts/verify-result-ui.py --browser ${{ matrix.browser }} --output artifacts/result-ui/${{ matrix.browser }}
       - name: Upload screenshots and browser report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: result-ui-evidence
-          path: artifacts/result-ui
+          name: result-ui-evidence-${{ matrix.browser }}
+          path: artifacts/result-ui/${{ matrix.browser }}
           retention-days: 7
+
