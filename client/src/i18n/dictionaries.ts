@@ -1,0 +1,17 @@
+import type { Language } from './language';
+import { SOURCE_MESSAGES } from './source';
+import { EN_MESSAGES as lang0 } from './en';
+import { MESSAGES as lang1 } from './es';
+import { MESSAGES as lang2 } from './pt-BR';
+import { MESSAGES as lang3 } from './zh-Hans';
+import { MESSAGES as lang4 } from './fr';
+import { MESSAGES as lang5 } from './de';
+import { MESSAGES as lang6 } from './ko';
+import { MESSAGES as lang7 } from './ru';
+import { MESSAGES as lang8 } from './it';
+import { MESSAGES as lang9 } from './zh-Hant';
+import { MESSAGES as lang10 } from './id';
+import { MESSAGES as lang11 } from './tr';
+import { MESSAGES as lang12 } from './vi';
+import { MESSAGES as lang13 } from './th';
+export const dictionaries: Partial<Record<Language, Record<string, string>>> = { ja: SOURCE_MESSAGES,"en":lang0, "es":lang1, "pt-BR":lang2, "zh-Hans":lang3, "fr":lang4, "de":lang5, "ko":lang6, "ru":lang7, "it":lang8, "zh-Hant":lang9, "id":lang10, "tr":lang11, "vi":lang12, "th":lang13 };

@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Component, ReactNode } from "react";
@@ -31,7 +32,7 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl mb-4">予期しないエラーが発生しました。</h2>
+            <h2 className="text-xl mb-4">{t("予期しないエラーが発生しました。")}</h2>
 
             <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
               <pre className="text-sm text-muted-foreground whitespace-break-spaces">
@@ -48,8 +49,7 @@ class ErrorBoundary extends Component<Props, State> {
               )}
             >
               <RotateCcw size={16} />
-              ページを再読み込み
-            </button>
+              {t("ページを再読み込み")}</button>
           </div>
         </div>
       );

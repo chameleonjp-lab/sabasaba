@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { useEffect, useRef, useState } from "react";
 
 export const buildShareText = (text: string, url: string) => `${text.trim()}\n${url}`;
@@ -10,21 +11,15 @@ type ShareButtonProps = {
   className?: string;
 };
 
-const getShareUrl = () => {
-  const url = new URL(window.location.href);
-  url.search = "";
-  url.hash = "";
+const getShareUrl = () => 'https://chameleonjp-lab.github.io/sabasaba/';
+
+export const buildXIntent = (text: string) => {
+  const url = new URL('https://x.com/intent/post');
+  url.searchParams.set('text', text);
   return url.href;
 };
 
-const isShareCancelled = (error: unknown) => (
-  typeof error === "object"
-  && error !== null
-  && "name" in error
-  && error.name === "AbortError"
-);
-
-export default function ShareButton({ title, text, label, testId, className = "" }: ShareButtonProps) {
+export default function ShareButton({ text, label, testId, className = "" }: ShareButtonProps) {
   const [status, setStatus] = useState("");
   const [pending, setPending] = useState(false);
   const [manualText, setManualText] = useState("");
@@ -45,27 +40,17 @@ export default function ShareButton({ title, text, label, testId, className = ""
     setManualText("");
     const url = getShareUrl();
     const shareText = buildShareText(text, url);
-    const shareData = { title, text: shareText };
-
-    if (typeof navigator.share === "function") {
-      try {
-        const canUseNativeShare = typeof navigator.canShare !== "function" || navigator.canShare(shareData);
-        if (canUseNativeShare) {
-          await navigator.share(shareData);
-          showStatus("共有画面を開きました。");
-          return;
-        }
-      } catch (error) {
-        if (isShareCancelled(error)) return;
-      }
-    }
+    try {
+      const popup = window.open(buildXIntent(shareText), '_blank');
+      if (popup) { popup.opener = null; showStatus(t('Xの投稿画面を開きました。')); return; }
+    } catch { /* Copy and manual text remain available. */ }
 
     try {
       await navigator.clipboard.writeText(shareText);
-      showStatus("シェア文をコピーしました。");
+      showStatus(t("シェア文をコピーしました。"));
     } catch {
       setManualText(shareText);
-      showStatus("下のシェア文を選択してコピーできます。");
+      showStatus(t("下のシェア文を選択してコピーできます。"));
     }
   };
 
@@ -82,7 +67,7 @@ export default function ShareButton({ title, text, label, testId, className = ""
       <button className="share-button" data-testid={testId} type="button" disabled={pending} onClick={() => void share()}>
         {label}
       </button>
-      {manualText && <textarea className="share-manual-text" aria-label="コピー用のシェア文" readOnly value={manualText} onFocus={(event) => event.currentTarget.select()} />}
+      {manualText && <textarea className="share-manual-text" aria-label={t("コピー用のシェア文")} readOnly value={manualText} onFocus={(event) => event.currentTarget.select()} />}
       {status && <p className="share-status" role="status" aria-live="polite">{status}</p>}
     </div>
   );

@@ -1,3 +1,4 @@
+import { t } from "@/i18n/runtime";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { getCrossedKillMilestones, MAX_ACTIVE_MILESTONE_CELEBRATIONS, retainLatestMilestoneCelebrations } from "@/game/rules";
@@ -88,7 +89,7 @@ export default function KillMilestoneRain({ kills }: { kills: number }) {
           data-testid="kill-milestone-rain"
           data-milestone={milestone}
           role="status"
-          aria-label={`${milestone}体撃破`}>
+          aria-label={t(`${milestone}体撃破`)}>
           {PARTICLES.map((style, index) => (
             <span
               key={`${id}-${index}`}
