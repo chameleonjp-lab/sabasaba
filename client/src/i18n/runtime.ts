@@ -5,7 +5,7 @@ let current: Language | null = null;
 const listeners = new Set<() => void>();
 export function getLanguage(): Language {
   if (current) return current;
-  const browser = typeof navigator === 'undefined' ? [] : navigator.languages ?? [navigator.language];
+  const browser = typeof navigator === 'undefined' ? [] : [...(navigator.languages ?? []), navigator.language];
   try { current = readLanguage(window.localStorage, browser); }
   catch { current = readLanguage({getItem: () => null}, browser); }
   return current;
