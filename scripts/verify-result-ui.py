@@ -27,6 +27,14 @@ def isolated_context(browser, url, blocked=None, mocked_reads=None, **options):
     return context
 
 
+def close_isolated_context(context):
+    # Never unroute a live preview: stop new browser network activity first.
+    # Pending route.fetch responses can then finish before close disposes them.
+    context.set_offline(True)
+    context.unroute_all(behavior="wait")
+    context.close()
+
+
 def verify_share_colors(page, button):
     def assert_colors():
         style = button.evaluate("b => {const s=getComputedStyle(b);return {color:s.color,background:s.backgroundColor,image:s.backgroundImage};}")
@@ -86,7 +94,7 @@ def verify(url, output, browser_name="chromium"):
                 page.screenshot(path=str(output / f"evolution-{mode}-{width}x{height}.png"))
                 assert not errors, errors
                 report.append({"mode": mode, "width": width, "height": height, "result": "pass"})
-                context.close()
+                close_isolated_context(context)
         context = isolated_context(browser, url, viewport={"width": 390, "height": 844}, locale="ja-JP", is_mobile=True, has_touch=True)
         page = context.new_page()
         page.goto(f"{url}?result&mode=endless", wait_until="domcontentloaded")
@@ -121,7 +129,7 @@ def verify(url, output, browser_name="chromium"):
         page.get_by_test_id("retry-run").click()
         page.get_by_test_id("retry-run").wait_for(state="hidden")
         report.append({"share": "X intent, clipboard, manual fallback, duplicate guard", "replay": "pass"})
-        context.close()
+        close_isolated_context(context)
         for width, height in [(320, 568), (402, 700), (844, 390)]:
             context = isolated_context(browser, url, viewport={"width": width, "height": height}, locale="ja-JP", is_mobile=True, has_touch=True)
             page = context.new_page()
@@ -153,7 +161,7 @@ def verify(url, output, browser_name="chromium"):
                 assert not rpc_requests, "home locale and mode switches must not start a play or contact ranking"
                 report.append({"homeLanguageUpperLeft": "pass", "viewport": [width, height], "modes": ["normal", "endless"]})
             finally:
-                context.close()
+                close_isolated_context(context)
         languages = ["ja", "en", "es", "pt-BR", "zh-Hans", "fr", "de", "ko", "ru", "it", "zh-Hant", "id", "tr", "vi", "th"]
         for language in languages:
             context = isolated_context(browser, url, viewport={"width": 393, "height": 852}, locale="ja-JP", is_mobile=True, has_touch=True)
@@ -189,7 +197,7 @@ def verify(url, output, browser_name="chromium"):
                 assert box and box["height"] >= 44 and box["width"] >= 44
                 assert 0 <= box["x"] and box["x"] + box["width"] <= 394
             report.append({"language": language, "savedChoice": "pass", "nameAndMutedZeroPreserved": "pass", "selectedModeLink": "pass", "resultLayout": "pass"})
-            context.close()
+            close_isolated_context(context)
         verify_extra(browser, url, output, isolated_context)
         browser.close()
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
