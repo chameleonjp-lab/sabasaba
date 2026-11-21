@@ -318,6 +318,8 @@ button { font: inherit; }
 .pre-run-backdrop { position: absolute; inset: 0; background: radial-gradient(circle at 50% 35%, rgba(255, 173, 38, .12), transparent 34%), linear-gradient(145deg, #0a1518, #07090a 60%, #1b1107); pointer-events: none; }
 .pre-run-backdrop::after { content: ""; position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(255, 173, 38, .22) 1px, transparent 1px), linear-gradient(90deg, rgba(74, 229, 232, .16) 1px, transparent 1px); background-size: 34px 34px; mask-image: linear-gradient(180deg, #000, transparent 80%); }
 .pre-run-panel { position: relative; z-index: 2; width: min(680px, 100%); padding: clamp(24px, 5vw, 48px); border: 1px solid rgba(255, 173, 38, .6); background: linear-gradient(145deg, rgba(18, 25, 24, .97), rgba(7, 12, 13, .98)); box-shadow: 0 24px 90px rgba(0, 0, 0, .58), inset 0 0 80px rgba(255, 173, 38, .04); }
+.pre-run-panel > .language-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; width: fit-content; max-width: 100%; margin: 0 0 12px; color: #fff5e2; }
+.pre-run-panel > .language-control select { min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 10px; border: 1px solid rgba(255, 173, 38, .6); border-radius: 8px; background: #0b1619; color: inherit; font: inherit; }
 .pre-run-sigil { display: block; width: 52px; height: 52px; margin-bottom: 18px; object-fit: contain; filter: drop-shadow(0 0 15px rgba(255, 173, 38, .58)); }
 .pre-run-panel > h1 { margin: 0; color: #fff5e2; font: 700 clamp(32px, 7vw, 64px) / .86 "Chakra Petch", sans-serif; letter-spacing: .035em; }
 .pre-run-panel > h1 span { color: #ffad26; }
