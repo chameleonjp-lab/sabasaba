@@ -91,7 +91,7 @@ def verify(url, output, browser_name="chromium"):
         page = context.new_page()
         page.goto(f"{url}?result&mode=endless", wait_until="domcontentloaded")
         share = page.get_by_test_id("share-result"); share.wait_for(timeout=30000)
-        page.evaluate(STUB)
+        page.evaluate(f"() => {STUB}")
         page.evaluate('''() => {
           window.testCopies = [];
           Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async text => {window.testCopies.push(text);}}});
