@@ -19,22 +19,30 @@ export const LANGUAGES = [
 export type Language = typeof LANGUAGES[number]['id'];
 export const LANGUAGE_STORAGE_KEY = 'sabasaba-language-v1';
 const supported = (value: string | null): value is Language => LANGUAGES.some(item => item.id === value);
-const browserLanguage = (value: string): Language | null => {
-  const lower = value.toLowerCase().replaceAll('_', '-');
-  if (lower.startsWith('zh')) return /hant|tw|hk|mo/.test(lower) ? 'zh-Hant' : 'zh-Hans';
-  if (lower === 'pt' || lower.startsWith('pt-')) return 'pt-BR';
-  const base = lower.split('-')[0];
+const browserLanguage = (value: unknown): Language | null => {
+  if (typeof value !== 'string') return null;
+  const parts = value.trim().toLowerCase().replaceAll('_', '-').split('-');
+  const base = parts[0];
+  if (base === 'zh') {
+    const extension = parts.findIndex((part, index) => index > 0 && part.length === 1);
+    const core = extension < 0 ? parts : parts.slice(0, extension);
+    const script = core.find(part => part === 'hans' || part === 'hant');
+    if (script) return script === 'hant' ? 'zh-Hant' : 'zh-Hans';
+    return core.some(part => ['tw', 'hk', 'mo'].includes(part)) ? 'zh-Hant' : 'zh-Hans';
+  }
+  if (base === 'pt') return 'pt-BR';
   return supported(base) ? base : null;
 };
-export const resolveLanguage = (saved: string | null, browser: readonly string[]): Language => {
+export const resolveLanguage = (saved: string | null, browser: readonly (string | undefined)[]): Language => {
   if (supported(saved)) return saved;
-  for (const candidate of browser) {
+  const preferences = browser.filter(candidate => typeof candidate === 'string' && candidate.trim());
+  for (const candidate of preferences) {
     const language = browserLanguage(candidate);
     if (language) return language;
   }
-  return 'en';
+  return preferences.length ? 'en' : 'ja';
 };
-export const readLanguage = (storage: Pick<Storage, 'getItem'>, browser: readonly string[]): Language => {
+export const readLanguage = (storage: Pick<Storage, 'getItem'>, browser: readonly (string | undefined)[]): Language => {
   let saved: string | null = null;
   try { saved = storage.getItem(LANGUAGE_STORAGE_KEY); } catch { /* Private browsing uses memory. */ }
   return resolveLanguage(saved, browser);

@@ -1186,6 +1186,7 @@ export default function GameCanvas() {
       <main ref={mainRef} className={`game-shell pre-run-shell viewport-${viewportMode}`} onContextMenu={(event) => event.preventDefault()} aria-labelledby="pre-run-title" data-testid="game-shell" data-phase="ready">
         <div className="pre-run-backdrop" aria-hidden="true" />
         <section className="pre-run-panel" data-testid="pre-run-panel">
+          <label className="language-control">{t("言語")}<select data-testid="language-select" value={language} onChange={event => setLanguage(event.target.value as Language)}>{LANGUAGES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <img src={GAME_ASSETS.sigil} className="pre-run-sigil" alt="" aria-hidden="true" />
           <p className="modal-eyebrow">{t("封鎖区域 // セクター07")}</p>
           <h1 id="pre-run-title">{t("サバサバ")}</h1>
@@ -1197,7 +1198,6 @@ export default function GameCanvas() {
             <button className="start-run-button" data-testid="start-run" type="submit">{t("出撃開始")}<span>{t("開始")}</span></button>
           </form>
           <button className="weapon-library-trigger" data-testid="weapon-list" type="button" onClick={() => { rememberFocus(); setWeaponDetailId(null); setWeaponLibraryOpen(true); }}><span>{t("武器一覧")}</span><small>{t("効果・レベル・進化条件を見る")}</small><b>{t("開く")}</b></button>
-          <label className="language-control">{t("言語")}<select data-testid="language-select" value={language} onChange={event => setLanguage(event.target.value as Language)}>{LANGUAGES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <ShareButton className="home-share-action" label={t("Xでシェア")} testId="share-home" contextKey={`home:${selectedMode}:${language}:${rankingRunIdRef.current}`} title={t("サバサバ")} text={t("【サバサバ】自動射撃で敵の波を切り抜ける、見下ろし型サバイバルゲーム。")} />
            <a className="experiment-lab-link" data-testid="home-experiment-lab" href={`${EXPERIMENT_LAB_URL}ranking.html?game=sabasaba_${selectedMode}`} target="_blank" rel="noreferrer"><span>{t("ランキング")}</span><small>{t("選択中のモードの記録を見る")}</small><b aria-hidden="true">↗</b></a>
           <details className="pre-run-settings" open><summary>{t("出撃前の設定")}</summary><p>{t("端末に保存されます。出撃中は一時停止画面から変更できます。")}</p>{renderSettingsFields(true)}</details>
