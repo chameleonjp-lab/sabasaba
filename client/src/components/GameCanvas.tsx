@@ -427,6 +427,17 @@ export default function GameCanvas() {
     return () => window.clearInterval(timer);
   }, [countdownIsActive, finishRunCountdown]);
 
+  const countedRunRef = useRef<number | null>(null);
+  useEffect(() => {
+    const runId = rankingRunIdRef.current;
+    if (previewAutostart || !runStarted || !sceneReady || countdownRemaining > 0 ||
+        snapshot.phase !== "playing" || countedRunRef.current === runId) return;
+    countedRunRef.current = runId;
+    const slug = activeMode === "normal" ? "sabasaba_normal" : "sabasaba_endless";
+    const playCounterUrl = "https://chameleonjp-lab.github.io/chameleonjp_lab/play-start.js";
+    void import(/* @vite-ignore */ playCounterUrl).then(module => module.recordPlayStart(slug)).catch(() => {});
+  }, [previewAutostart, runStarted, sceneReady, countdownRemaining, snapshot.phase, activeMode]);
+
   const updatePlayerSettings = useCallback((next: PlayerSettings) => {
     const safe = {
       stickOpacity: Math.max(0.2, Math.min(1, next.stickOpacity)),
